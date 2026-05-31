@@ -82,6 +82,30 @@
   font-weight: 700;
 }
 
+.history-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.history-telegram-btn {
+  height: 38px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 12px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.history-telegram-btn:hover {
+  background: #bae6fd;
+}
+
 .history-stats {
   display: flex;
   flex-direction: column;
@@ -583,6 +607,15 @@ body.dark-mode {
     color: #93c5fd;
   }
 
+  .history-telegram-btn {
+    background: rgba(14, 165, 233, 0.16);
+    color: #7dd3fc;
+  }
+
+  .history-telegram-btn:hover {
+    background: rgba(14, 165, 233, 0.24);
+  }
+
   .returns-history-total {
     background: rgba(220, 38, 38, 0.14);
   }
@@ -635,6 +668,10 @@ body.dark-mode {
   .return-history-main {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .history-top-actions {
+    justify-content: flex-start;
   }
 
   .history-date-filter button,

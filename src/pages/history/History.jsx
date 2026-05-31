@@ -5,6 +5,10 @@ import { useStore } from "../../context/StoreContext";
 import { useAuth } from "../../context/AuthContext";
 import { formatPrice } from "../../utils/formatPrice";
 import {
+  notifyDailyReport,
+  notifyReturn,
+} from "../../services/telegramService";
+import {
   RETURN_REASONS,
   applyReturnToHistory,
   buildReturnRecord,
@@ -279,6 +283,20 @@ function History() {
     setReturnModal(true);
   };
 
+  const sendDailyReportToTelegram = async (day) => {
+    await notifyDailyReport({
+      date: day.date,
+      total: getDayNetTotal(day),
+      cash: getDayPaymentTotal(day, "cash"),
+      card: getDayPaymentTotal(day, "card"),
+      transfer: getDayPaymentTotal(day, "transfer"),
+      count: day.sales?.length ? day.sales.length : Number(day.count || 0),
+      closedBy: day.closedBy || currentUser?.name,
+    });
+
+    alert("Kunlik savdo Telegramga yuborildi");
+  };
+
   const handleReturn = () => {
     if (!selectedSale || !selectedDay || !selectedReturnItem || !returnReason) {
       return;
@@ -322,6 +340,8 @@ function History() {
       ),
     );
     setSalesHistory(returnResult.history);
+
+    void notifyReturn(returnItem);
 
     addActivityLog({
       type: "return",
@@ -497,21 +517,31 @@ function History() {
                     <h3>{day.date}</h3>
                   </div>
 
-                  <div className="history-badge">{day.visibleCount} savdo</div>
+                  <div className="history-top-actions">
+                    <div className="history-badge">{day.visibleCount} savdo</div>
 
-                  <button
-                    className="expand-btn"
-                    onClick={() =>
-                      setExpandedDay(expandedDay === dayKey ? null : dayKey)
-                    }
-                    type="button"
-                  >
-                    {expandedDay === dayKey ? (
-                      <FiChevronUp />
-                    ) : (
-                      <FiChevronDown />
-                    )}
-                  </button>
+                    <button
+                      className="history-telegram-btn"
+                      onClick={() => sendDailyReportToTelegram(day)}
+                      type="button"
+                    >
+                      Telegram
+                    </button>
+
+                    <button
+                      className="expand-btn"
+                      onClick={() =>
+                        setExpandedDay(expandedDay === dayKey ? null : dayKey)
+                      }
+                      type="button"
+                    >
+                      {expandedDay === dayKey ? (
+                        <FiChevronUp />
+                      ) : (
+                        <FiChevronDown />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="history-stats">

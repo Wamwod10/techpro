@@ -16,6 +16,13 @@ import {
   getSaleProfit,
 } from "../../utils/returns";
 
+import { useState } from "react";
+import {
+  saveTelegramSettings,
+  getTelegramSettings,
+  sendTelegramMessage,
+} from "../../services/telegramService";
+
 import "./dashboard.scss";
 
 function Dashboard() {
@@ -34,6 +41,45 @@ function Dashboard() {
     ...dailySales,
     ...salesHistory.flatMap((day) => day.sales || []),
   ];
+
+  const [telegramSettings, setTelegramSettings] = useState(() => {
+    return (
+      getTelegramSettings() || {
+        botToken: "",
+        chatId: "",
+        newSale: true,
+        dailyReport: true,
+        returns: true,
+        lowStock: true,
+        outOfStock: true,
+        shiftOpen: true,
+        shiftClose: true,
+      }
+    );
+  });
+
+  const handleTelegramChange = (key, value) => {
+    setTelegramSettings({
+      ...telegramSettings,
+      [key]: value,
+    });
+  };
+
+  const handleSaveTelegram = () => {
+    saveTelegramSettings(telegramSettings);
+    alert("Telegram sozlamalari saqlandi");
+  };
+
+  const handleTestTelegram = async () => {
+    saveTelegramSettings(telegramSettings);
+
+    await sendTelegramMessage(
+      "✅ <b>TECHPRO Telegram test</b>\n\nTelegram bot muvaffaqiyatli ulandi.",
+      null,
+    );
+
+    alert("Test xabar yuborildi");
+  };
 
   const recentSoldProducts = allSales
     .flatMap((sale) =>
@@ -505,6 +551,56 @@ function Dashboard() {
               </div>
             ))
           )}
+        </div>
+      </div>
+      <div className="telegram-settings-card">
+        <div className="telegram-settings-header">
+          <div>
+            <h3>Telegram bot sozlamalari</h3>
+            <p>Bot token va chat ID kiriting, xabar turlarini tanlang</p>
+          </div>
+        </div>
+
+        <div className="telegram-inputs">
+          <input
+            type="text"
+            placeholder="Bot token"
+            value={telegramSettings.botToken}
+            onChange={(e) => handleTelegramChange("botToken", e.target.value)}
+          />
+
+          <input
+            type="text"
+            placeholder="Chat ID"
+            value={telegramSettings.chatId}
+            onChange={(e) => handleTelegramChange("chatId", e.target.value)}
+          />
+        </div>
+
+        <div className="telegram-options">
+          {[
+            ["newSale", "Yangi savdo"],
+            ["dailyReport", "Kunlik hisobot"],
+            ["returns", "Vozvrat"],
+            ["lowStock", "Kam qolgan mahsulot"],
+            ["outOfStock", "Mahsulot tugadi"],
+            ["shiftOpen", "Shift ochildi"],
+            ["shiftClose", "Shift yopildi"],
+          ].map(([key, label]) => (
+            <label key={key}>
+              <input
+                type="checkbox"
+                checked={telegramSettings[key]}
+                onChange={(e) => handleTelegramChange(key, e.target.checked)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="telegram-actions">
+          <button onClick={handleTestTelegram}>Test yuborish</button>
+          <button onClick={handleSaveTelegram}>Saqlash</button>
         </div>
       </div>
     </div>

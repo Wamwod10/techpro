@@ -16,6 +16,12 @@ import {
   getSalesNetTotal,
   increaseInventoryQuantity,
 } from "../../utils/returns";
+import {
+  notifyDailyReport,
+  notifyNewSale,
+  notifyReturn,
+  notifyStockAlertsForInventoryChange,
+} from "../../services/telegramService";
 
 function Sales() {
   const { currentUser } = useAuth();
@@ -28,6 +34,10 @@ function Sales() {
     setSalesHistory,
     addActivityLog,
   } = useStore();
+
+  const activeShift = JSON.parse(
+    localStorage.getItem("techpro_active_shift") || "null",
+  );
 
   const [cart, setCart] = useState([]);
 
@@ -261,6 +271,8 @@ function Sales() {
     saveRecentSoldProducts(sale);
 
     setReceiptModal(true);
+    setSuccess(true);
+    window.setTimeout(() => setSuccess(false), 1800);
 
     setDailySales([sale, ...dailySales]);
 
@@ -279,6 +291,9 @@ function Sales() {
     });
 
     setInventory(updatedInventory);
+    notifyStockAlertsForInventoryChange(inventory, updatedInventory);
+
+    void notifyNewSale(sale);
 
     setCart([]);
 
@@ -345,6 +360,8 @@ function Sales() {
     );
     setDailySales(returnResult.sales);
 
+    void notifyReturn(returnItem);
+
     addActivityLog({
       type: "return",
       title: "Vozvrat qilindi",
@@ -373,6 +390,87 @@ function Sales() {
     .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
 
   const totalSalesAmount = getSalesNetTotal(dailySales);
+
+  const closeDailySales = () => {
+    const historyItem = {
+      id: crypto.randomUUID(),
+
+      total: totalSalesAmount,
+
+      cash: cashTotal,
+
+      card: cardTotal,
+
+      transfer: transferTotal,
+
+      returnedTotal: dailySales.reduce(
+        (acc, sale) => acc + Number(sale.returnedTotal || 0),
+        0,
+      ),
+
+      count: dailySales.length,
+
+      date: new Date().toLocaleDateString("uz-UZ"),
+
+      sales: dailySales,
+
+      dateISO: todayISO,
+
+      closedBy: currentUser?.name,
+    };
+
+    const existingDay = salesHistory.find(
+      (day) => day.date === historyItem.date,
+    );
+
+    if (existingDay) {
+      const updatedHistory = salesHistory.map((day) => {
+        if (day.date === historyItem.date) {
+          const getExistingPaymentTotal = (paymentMethod) =>
+            day.sales?.length
+              ? day.sales
+                  .filter((sale) => sale.paymentMethod === paymentMethod)
+                  .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0)
+              : Number(day[paymentMethod] || 0);
+
+          return {
+            ...day,
+
+            total: getDayNetTotal(day) + historyItem.total,
+
+            cash: getExistingPaymentTotal("cash") + historyItem.cash,
+
+            card: getExistingPaymentTotal("card") + historyItem.card,
+
+            transfer:
+              getExistingPaymentTotal("transfer") + historyItem.transfer,
+
+            returnedTotal:
+              Number(day.returnedTotal || 0) +
+              Number(historyItem.returnedTotal || 0),
+
+            count: day.count + historyItem.count,
+
+            sales: [...day.sales, ...historyItem.sales],
+
+            closedBy: historyItem.closedBy,
+          };
+        }
+
+        return day;
+      });
+
+      setSalesHistory(updatedHistory);
+    } else {
+      setSalesHistory([historyItem, ...salesHistory]);
+    }
+
+    void notifyDailyReport(historyItem);
+
+    setDailySales([]);
+
+    setShowCloseModal(false);
+  };
 
   useEffect(() => {
     localStorage.setItem("techpro_inventory", JSON.stringify(inventory));
@@ -427,19 +525,22 @@ function Sales() {
 
                 <button
                   disabled={
+                    !activeShift ||
                     product.quantity -
                       (cart.find((item) => item.id === product.id)?.quantity ||
                         0) <=
-                    0
+                      0
                   }
                   onClick={() => addToCart(product)}
                 >
-                  {product.quantity -
-                    (cart.find((item) => item.id === product.id)?.quantity ||
-                      0) >
-                  0
-                    ? "Savatga"
-                    : "Tugagan"}
+                  {!activeShift
+                    ? "Kassa yopiq"
+                    : product.quantity -
+                          (cart.find((item) => item.id === product.id)
+                            ?.quantity || 0) >
+                        0
+                      ? "Savatga"
+                      : "Tugagan"}
                 </button>
               </div>
             </div>
@@ -529,13 +630,15 @@ function Sales() {
           <button
             className="checkout-btn"
             onClick={handleCheckout}
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || !activeShift}
           >
-            {paymentMethod === "cash" && "Naqd to‘lov"}
-
-            {paymentMethod === "card" && "Karta to‘lovi"}
-
-            {paymentMethod === "transfer" && "O‘tkazma"}
+            {!activeShift
+              ? "Avval kassa oching"
+              : paymentMethod === "cash"
+                ? "Naqd to‘lov"
+                : paymentMethod === "card"
+                  ? "Karta to‘lovi"
+                  : "O‘tkazma"}
           </button>
         </div>
         <div className="daily-sales">
@@ -573,19 +676,21 @@ function Sales() {
                       <div className="daily-product-row" key={item.id}>
                         <div>
                           <span>
-                        {item.name} × {item.quantity}
-                        {item.returnedQty > 0 && (
-                          <strong className="returned-badge">
-                            Vozvrat: {item.returnedQty}
-                          </strong>
-                        )}
+                            {item.name} × {item.quantity}
+                            {item.returnedQty > 0 && (
+                              <strong className="returned-badge">
+                                Vozvrat: {item.returnedQty}
+                              </strong>
+                            )}
                           </span>
                           <small>
                             {getAvailableReturnQty(item)} dona qaytarish mumkin
                           </small>
                         </div>
 
-                        <strong>{formatPrice(item.price * item.quantity)}</strong>
+                        <strong>
+                          {formatPrice(item.price * item.quantity)}
+                        </strong>
                       </div>
                     ))}
                   </div>
@@ -662,88 +767,7 @@ function Sales() {
 
               <button
                 className="confirm-btn"
-                onClick={() => {
-                  const historyItem = {
-                    id: Date.now(),
-
-                    total: totalSalesAmount,
-
-                    cash: cashTotal,
-
-                    card: cardTotal,
-
-                    transfer: transferTotal,
-
-                    returnedTotal: dailySales.reduce(
-                      (acc, sale) => acc + Number(sale.returnedTotal || 0),
-                      0,
-                    ),
-
-                    count: dailySales.length,
-
-                    date: new Date().toLocaleDateString("uz-UZ"),
-
-                    sales: dailySales,
-
-                    dateISO: todayISO,
-                  };
-
-                  const existingDay = salesHistory.find(
-                    (day) => day.date === historyItem.date,
-                  );
-
-                  if (existingDay) {
-                    const updatedHistory = salesHistory.map((day) => {
-                      if (day.date === historyItem.date) {
-                        const getExistingPaymentTotal = (paymentMethod) =>
-                          day.sales?.length
-                            ? day.sales
-                                .filter(
-                                  (sale) => sale.paymentMethod === paymentMethod,
-                                )
-                                .reduce(
-                                  (acc, sale) => acc + getSaleNetTotal(sale),
-                                  0,
-                                )
-                            : Number(day[paymentMethod] || 0);
-
-                        return {
-                          ...day,
-
-                          total: getDayNetTotal(day) + historyItem.total,
-
-                          cash:
-                            getExistingPaymentTotal("cash") + historyItem.cash,
-
-                          card:
-                            getExistingPaymentTotal("card") + historyItem.card,
-
-                          transfer:
-                            getExistingPaymentTotal("transfer") +
-                            historyItem.transfer,
-
-                          returnedTotal:
-                            Number(day.returnedTotal || 0) +
-                            Number(historyItem.returnedTotal || 0),
-
-                          count: day.count + historyItem.count,
-
-                          sales: [...day.sales, ...historyItem.sales],
-                        };
-                      }
-
-                      return day;
-                    });
-
-                    setSalesHistory(updatedHistory);
-                  } else {
-                    setSalesHistory([historyItem, ...salesHistory]);
-                  }
-
-                  setDailySales([]);
-
-                  setShowCloseModal(false);
-                }}
+                onClick={closeDailySales}
               >
                 Yakunlash
               </button>
@@ -866,9 +890,7 @@ function Sales() {
                   <input
                     type="number"
                     min="1"
-                    max={
-                      getAvailableReturnQty(selectedReturnItem)
-                    }
+                    max={getAvailableReturnQty(selectedReturnItem)}
                     value={returnQty}
                     onChange={(e) => setReturnQty(e.target.value)}
                   />

@@ -544,6 +544,19 @@ body.dark-mode {
   }
 }
 
+.pdf-download-btn {
+  width: 100%;
+  max-width: 200px;
+  height: 50px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 14px;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .add-product-btn.disabled,
 .product-actions.disabled {
   opacity: 0.45;

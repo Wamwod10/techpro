@@ -14,6 +14,7 @@ import Analytics from "./pages/analytics/Analytics";
 import SellerAnalytics from "./pages/sellerAnalytics/SellerAnalytics";
 import ActivityLog from "./pages/activityLog/ActivityLog";
 import { useAuth } from "./context/AuthContext";
+import Shifts from "./pages/shifts/Shifts";
 
 function ProtectedRoute({ children }) {
   const { currentUser } = useAuth();
@@ -55,6 +56,7 @@ function App() {
             </ProtectedRoute>
           }
         >
+          <Route path="/shifts" element={<Shifts />} />
           <Route
             index
             element={

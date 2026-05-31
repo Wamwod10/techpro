@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useStore } from "../../context/StoreContext";
 import { useAuth } from "../../context/AuthContext";
+import { notifyStockAlertsForInventoryChange } from "../../services/telegramService";
 
 import {
   FiPlus,
@@ -240,6 +241,7 @@ function Inventory() {
     );
 
     setInventory(updatedInventory);
+    notifyStockAlertsForInventoryChange(inventory, updatedInventory);
 
     addActivityLog({
       type: "inventory",
@@ -319,6 +321,7 @@ function Inventory() {
     };
 
     setInventory([newItem, ...inventory]);
+    notifyStockAlertsForInventoryChange(inventory, [newItem, ...inventory]);
 
     addActivityLog({
       type: "inventory",

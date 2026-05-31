@@ -22,6 +22,7 @@ import {
   FiActivity,
   FiMenu,
   FiX,
+  FiBriefcase,
 } from "react-icons/fi";
 
 import "./mainlayout.scss";
@@ -112,6 +113,12 @@ function MainLayout() {
       path: "/",
       icon: <FiGrid />,
       roles: ["admin"],
+    },
+    {
+      title: "Kassa / Shift",
+      path: "/shifts",
+      icon: <FiBriefcase />,
+      roles: ["admin", "cashier"],
     },
     {
       title: "Savdo",

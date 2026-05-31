@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import {
   FiSearch,
@@ -12,6 +14,7 @@ import {
 } from "react-icons/fi";
 
 import { formatPrice } from "../../utils/formatPrice";
+import { notifyStockAlertsForInventoryChange } from "../../services/telegramService";
 
 import { useStore } from "../../context/StoreContext";
 
@@ -91,6 +94,7 @@ function Products() {
       );
 
       setInventory(updated);
+      notifyStockAlertsForInventoryChange(inventory, updated);
 
       addActivityLog({
         type: "product",
@@ -131,6 +135,7 @@ function Products() {
       };
 
       setInventory([newProduct, ...inventory]);
+      notifyStockAlertsForInventoryChange(inventory, [newProduct, ...inventory]);
 
       addActivityLog({
         type: "product",
@@ -248,6 +253,62 @@ function Products() {
       return 0;
     });
 
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.text("TECHPRO.UZ", 14, 18);
+
+    doc.setFontSize(12);
+    doc.text("Mahsulotlar ro'yxati", 14, 28);
+    doc.text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, 14, 36);
+
+    const tableData = inventory.map((product, index) => [
+      index + 1,
+      product.name,
+      product.sku,
+      product.category || "Kategoriya yo'q",
+      formatPrice(product.sellPrice),
+      `${product.quantity} dona`,
+      getStatus(Number(product.quantity)).text,
+    ]);
+
+    autoTable(doc, {
+      startY: 46,
+      head: [
+        ["№", "Mahsulot", "SKU", "Kategoriya", "Narx", "Qoldiq", "Status"],
+      ],
+      body: tableData,
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [37, 99, 235],
+        textColor: 255,
+        fontStyle: "bold",
+      },
+    });
+
+    const inventoryValue = inventory.reduce(
+      (acc, item) =>
+        acc + Number(item.sellPrice || 0) * Number(item.quantity || 0),
+      0,
+    );
+
+    const finalY = doc.lastAutoTable.finalY + 12;
+
+    doc.setFontSize(11);
+    doc.text(`Jami mahsulotlar: ${inventory.length} ta`, 14, finalY);
+    doc.text(
+      `Jami ombor qiymati: ${formatPrice(inventoryValue)}`,
+      14,
+      finalY + 8,
+    );
+
+    doc.save("techpro-products.pdf");
+  };
+
   return (
     <div className="products-page">
       <div className="products-header">
@@ -338,6 +399,9 @@ function Products() {
             )}
           </div>
 
+          <button className="pdf-download-btn" onClick={handleDownloadPDF}>
+            PDF yuklab olish
+          </button>
           <div className="filter-group filter-group-old">
             <button
               className={sortType === "az" ? "active" : ""}
