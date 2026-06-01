@@ -614,6 +614,7 @@ function Products() {
                     className={`product-actions ${!isAdmin ? "disabled" : ""}`}
                   >
                     <button
+                      disabled={!isAdmin}
                       onClick={() => {
                         if (!isAdmin) return;
                         openEditModal(product);
@@ -624,7 +625,7 @@ function Products() {
 
                     <button
                       className="delete"
-                      disabled={deletingProductId === product.id}
+                      disabled={!isAdmin || deletingProductId === product.id}
                       onClick={() => {
                         if (!isAdmin) return;
                         handleDeleteProduct(product.id);

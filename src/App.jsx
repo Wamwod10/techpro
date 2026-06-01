@@ -92,7 +92,14 @@ function App() {
             }
           />
           <Route path="history" element={<History />} />
-          <Route path="expenses" element={<Expenses />} />
+          <Route
+            path="expenses"
+            element={
+              <RoleRoute roles={["admin"]}>
+                <Expenses />
+              </RoleRoute>
+            }
+          />
           <Route
             path="analytics"
             element={

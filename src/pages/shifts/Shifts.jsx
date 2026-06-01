@@ -5,6 +5,7 @@ import { useStore } from "../../context/StoreContext";
 import { formatPrice } from "../../utils/formatPrice";
 import api from "../../services/api";
 import { getApiErrorMessage } from "../../utils/apiFlow";
+import { getSaleNetTotal } from "../../utils/returns";
 
 import "./shifts.scss";
 
@@ -26,21 +27,21 @@ function Shifts() {
   const [shiftError, setShiftError] = useState("");
 
   const todaySales = dailySales.reduce(
-    (acc, sale) => acc + Number(sale.total || 0),
+    (acc, sale) => acc + getSaleNetTotal(sale),
     0,
   );
 
   const cashSales = dailySales
     .filter((sale) => sale.paymentMethod === "cash")
-    .reduce((acc, sale) => acc + Number(sale.total || 0), 0);
+    .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
 
   const cardSales = dailySales
     .filter((sale) => sale.paymentMethod === "card")
-    .reduce((acc, sale) => acc + Number(sale.total || 0), 0);
+    .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
 
   const transferSales = dailySales
     .filter((sale) => sale.paymentMethod === "transfer")
-    .reduce((acc, sale) => acc + Number(sale.total || 0), 0);
+    .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
 
   const openShift = () => {
     if (openingShift || !cashierName || !openingCash) return;

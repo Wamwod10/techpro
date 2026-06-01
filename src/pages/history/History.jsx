@@ -547,13 +547,15 @@ function History() {
                   <div className="history-top-actions">
                     <div className="history-badge">{day.visibleCount} savdo</div>
 
-                    <button
-                      className="history-telegram-btn"
-                      onClick={() => sendDailyReportToTelegram(day)}
-                      type="button"
-                    >
-                      Telegram
-                    </button>
+                    {currentUser?.role === "admin" && (
+                      <button
+                        className="history-telegram-btn"
+                        onClick={() => sendDailyReportToTelegram(day)}
+                        type="button"
+                      >
+                        Telegram
+                      </button>
+                    )}
 
                     <button
                       className="expand-btn"

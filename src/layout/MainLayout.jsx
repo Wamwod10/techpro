@@ -154,7 +154,7 @@ function MainLayout() {
       title: "Xarajatlar",
       path: "/expenses",
       icon: <FiCreditCard />,
-      roles: ["admin", "cashier"],
+      roles: ["admin"],
     },
     {
       title: "Analitika",

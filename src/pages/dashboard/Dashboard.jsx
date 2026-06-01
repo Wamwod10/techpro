@@ -9,6 +9,7 @@ import {
 import { useStore } from "../../context/StoreContext";
 
 import { formatPrice } from "../../utils/formatPrice";
+import { getApiErrorMessage } from "../../utils/apiFlow";
 import {
   getDayNetTotal,
   getNetSoldQty,
@@ -58,6 +59,9 @@ function Dashboard() {
     shiftOpen: true,
     shiftClose: true,
   });
+  const [telegramSaving, setTelegramSaving] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState("");
+  const [telegramError, setTelegramError] = useState("");
 
   useEffect(() => {
     if (savedTelegramSettings) {
@@ -76,18 +80,45 @@ function Dashboard() {
   };
 
   const handleSaveTelegram = async () => {
-    const settings = await saveTelegramSettings(telegramSettings);
-    setSavedTelegramSettings(settings);
-    alert("Telegram sozlamalari saqlandi");
+    if (telegramSaving) return;
+
+    setTelegramSaving(true);
+    setTelegramError("");
+    setTelegramMessage("");
+
+    try {
+      const settings = await saveTelegramSettings(telegramSettings);
+      setSavedTelegramSettings(settings);
+      setTelegramMessage("Telegram sozlamalari saqlandi");
+    } catch (error) {
+      setTelegramError(
+        getApiErrorMessage(error, "Telegram sozlamalarini saqlashda xatolik"),
+      );
+    } finally {
+      setTelegramSaving(false);
+    }
   };
 
   const handleTestTelegram = async () => {
-    const settings = await saveTelegramSettings(telegramSettings);
-    setSavedTelegramSettings(settings);
+    if (telegramSaving) return;
 
-    await sendTelegramMessage();
+    setTelegramSaving(true);
+    setTelegramError("");
+    setTelegramMessage("");
 
-    alert("Test xabar yuborildi");
+    try {
+      const settings = await saveTelegramSettings(telegramSettings);
+      setSavedTelegramSettings(settings);
+
+      await sendTelegramMessage();
+      setTelegramMessage("Test xabar yuborildi");
+    } catch (error) {
+      setTelegramError(
+        getApiErrorMessage(error, "Telegram test xabarini yuborishda xatolik"),
+      );
+    } finally {
+      setTelegramSaving(false);
+    }
   };
 
   const recentSoldProducts = allSales
@@ -182,7 +213,9 @@ function Dashboard() {
   );
 
   const sortedHistory = [...salesHistory].sort(
-    (a, b) => new Date(b.date) - new Date(a.date),
+    (a, b) =>
+      new Date(b.dateISO || b.date).getTime() -
+      new Date(a.dateISO || a.date).getTime(),
   );
 
   const latestDay = sortedHistory[0];
@@ -223,8 +256,9 @@ function Dashboard() {
   const bestCategory =
     Object.entries(categoryProfitMap).sort((a, b) => b[1] - a[1])[0] || [];
 
-  const activeProducts = inventory.filter(
-    (item) => item.quantity > 0 && item.quantity < 20,
+  const activeProducts = inventory.filter((item) => item.quantity > 0).length;
+  const healthyStockProducts = inventory.filter(
+    (item) => Number(item.quantity || 0) > 5,
   ).length;
 
   const activeStockRatio =
@@ -232,14 +266,21 @@ function Dashboard() {
       ? Math.round((activeProducts / inventory.length) * 100)
       : 0;
 
+  const stockHealthRatio =
+    inventory.length > 0
+      ? Math.round((healthyStockProducts / inventory.length) * 100)
+      : 0;
+
+  const transactionScore = Math.min(100, totalTransactions * 5);
+
   const healthScore = Math.min(
     100,
     Math.max(
       0,
       Math.round(
-        profitMargin * 1.2 +
-          activeStockRatio * 0.5 +
-          Math.max(salesGrowth, 0) * 0.8,
+        profitMargin * 0.45 +
+          stockHealthRatio * 0.35 +
+          transactionScore * 0.2,
       ),
     ),
   );
@@ -608,8 +649,17 @@ function Dashboard() {
         </div>
 
         <div className="telegram-actions">
-          <button onClick={handleTestTelegram}>Test yuborish</button>
-          <button onClick={handleSaveTelegram}>Saqlash</button>
+          {telegramError && <div className="form-error">{telegramError}</div>}
+          {telegramMessage && (
+            <div className="form-success">{telegramMessage}</div>
+          )}
+
+          <button disabled={telegramSaving} onClick={handleTestTelegram}>
+            {telegramSaving ? "Yuborilmoqda..." : "Test yuborish"}
+          </button>
+          <button disabled={telegramSaving} onClick={handleSaveTelegram}>
+            {telegramSaving ? "Saqlanmoqda..." : "Saqlash"}
+          </button>
         </div>
       </div>
     </div>

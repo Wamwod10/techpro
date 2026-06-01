@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../../context/AuthContext";
 import { useStore } from "../../context/StoreContext";
@@ -17,29 +17,41 @@ function SellerAnalytics() {
 
   const isAdmin = currentUser?.role === "admin";
 
-  const allSales = [
-    ...dailySales,
-    ...salesHistory.flatMap((day) => day.sales || []),
-  ];
+  const allSales = useMemo(
+    () => [
+      ...dailySales,
+      ...salesHistory.flatMap((day) => day.sales || []),
+    ],
+    [dailySales, salesHistory],
+  );
 
-  const sellers = [
-    ...new Map(
-      allSales
-        .filter((sale) => sale.sellerId)
-        .map((sale) => [
-          sale.sellerId,
-          {
-            id: sale.sellerId,
-            name: sale.sellerName,
-            role: sale.sellerRole,
-          },
-        ]),
-    ).values(),
-  ];
+  const sellers = useMemo(
+    () => [
+      ...new Map(
+        allSales
+          .filter((sale) => sale.sellerId)
+          .map((sale) => [
+            sale.sellerId,
+            {
+              id: sale.sellerId,
+              name: sale.sellerName,
+              role: sale.sellerRole,
+            },
+          ]),
+      ).values(),
+    ],
+    [allSales],
+  );
 
   const [selectedSellerId, setSelectedSellerId] = useState(
     isAdmin ? sellers[0]?.id || "" : currentUser?.id,
   );
+
+  useEffect(() => {
+    if (isAdmin && !selectedSellerId && sellers[0]?.id) {
+      setSelectedSellerId(sellers[0].id);
+    }
+  }, [isAdmin, selectedSellerId, sellers]);
 
   const activeSellerId = isAdmin ? selectedSellerId : currentUser?.id;
 

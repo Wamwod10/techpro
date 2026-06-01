@@ -182,6 +182,7 @@ function Sales() {
           ...product,
 
           quantity: product.quantity - cartItem.quantity,
+          stock: product.quantity - cartItem.quantity,
         };
       }
 
@@ -363,8 +364,50 @@ function Sales() {
       closedBy: currentUser?.name,
     };
 
+    const mergeHistoryDay = (history) => {
+      const existing = history.find((day) => day.dateISO === historyItem.dateISO);
+
+      if (!existing) {
+        return [historyItem, ...history];
+      }
+
+      return history.map((day) =>
+        day.dateISO === historyItem.dateISO
+          ? {
+              ...day,
+              total: Number(day.total || 0) + Number(historyItem.total || 0),
+              cash: Number(day.cash || 0) + Number(historyItem.cash || 0),
+              card: Number(day.card || 0) + Number(historyItem.card || 0),
+              transfer:
+                Number(day.transfer || 0) + Number(historyItem.transfer || 0),
+              returnedTotal:
+                Number(day.returnedTotal || 0) +
+                Number(historyItem.returnedTotal || 0),
+              count: Number(day.count || 0) + Number(historyItem.count || 0),
+              sales: [...(historyItem.sales || []), ...(day.sales || [])],
+              closedBy: historyItem.closedBy,
+            }
+          : day,
+      );
+    };
+
     api
       .post("/sales/close-day", historyItem)
+      .then(({ data }) => {
+        if (!data?.report) return;
+
+        setSalesHistory((history) =>
+          history.map((day) =>
+            day.dateISO === data.report.dateISO
+              ? {
+                  ...day,
+                  ...data.report,
+                  sales: day.sales || [],
+                }
+              : day,
+          ),
+        );
+      })
       .catch((error) => {
         setSalesHistory(salesHistory);
         setDailySales(dailySales);
@@ -376,7 +419,7 @@ function Sales() {
         setCloseDaySaving(false);
       });
 
-    setSalesHistory([historyItem, ...salesHistory]);
+    setSalesHistory(mergeHistoryDay(salesHistory));
 
     setDailySales([]);
 

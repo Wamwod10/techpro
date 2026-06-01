@@ -235,6 +235,7 @@ export const increaseInventoryQuantity = (inventory, productId, quantity) =>
       ? {
           ...product,
           quantity: Number(product.quantity || 0) + Number(quantity || 0),
+          stock: Number(product.quantity || 0) + Number(quantity || 0),
         }
       : product,
   );

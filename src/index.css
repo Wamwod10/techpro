@@ -42,9 +42,27 @@ img{
     font-weight: 600;
 }
 
+.form-success{
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: 8px;
+    background: rgba(34, 197, 94, 0.08);
+    color: #16a34a;
+    font-size: 13px;
+    font-weight: 600;
+}
+
 body.dark .form-error,
 .dark .form-error{
     border-color: rgba(248, 113, 113, 0.28);
     background: rgba(248, 113, 113, 0.12);
     color: #fca5a5;
+}
+
+body.dark .form-success,
+.dark .form-success{
+    border-color: rgba(74, 222, 128, 0.28);
+    background: rgba(74, 222, 128, 0.12);
+    color: #86efac;
 }

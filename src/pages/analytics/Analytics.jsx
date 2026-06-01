@@ -11,10 +11,34 @@ function Analytics() {
     ...salesHistory.flatMap((day) => day.sales || []),
   ];
 
-  const productStats = inventory.map((product) => {
+  const productMap = new Map(
+    inventory.map((product) => [String(product.id), product]),
+  );
+
+  allSales.forEach((sale) => {
+    (sale.items || []).forEach((item) => {
+      const productKey = String(item.productId || item.id || item.name);
+
+      if (!productMap.has(productKey)) {
+        productMap.set(productKey, {
+          id: productKey,
+          name: item.name,
+          sku: item.sku,
+          quantity: 0,
+          sellPrice: Number(item.price || 0),
+          costPrice: Number(item.costPrice || 0),
+          category: "Arxiv",
+        });
+      }
+    });
+  });
+
+  const productStats = [...productMap.values()].map((product) => {
     const soldItems = allSales.flatMap((sale) =>
       (sale.items || []).filter(
-        (item) => String(item.productId || item.id) === String(product.id),
+        (item) =>
+          String(item.productId || item.id || item.name) ===
+          String(product.id),
       ),
     );
 
