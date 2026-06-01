@@ -1,9 +1,7 @@
-import axios from "axios";
-
-const API = "http://localhost:5000/api/products";
+import api from "./api";
 
 export const getProducts = async () => {
-  const response = await axios.get(API);
+  const response = await api.get("/products");
 
   return response.data;
 };

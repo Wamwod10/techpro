@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { FiSearch, FiShoppingCart, FiPlus, FiMinus } from "react-icons/fi";
 
@@ -9,19 +9,13 @@ import { useAuth } from "../../context/AuthContext";
 import {
   RETURN_REASONS,
   applyReturnToSales,
-  buildReturnRecord,
   getAvailableReturnQty,
-  getDayNetTotal,
   getSaleNetTotal,
   getSalesNetTotal,
   increaseInventoryQuantity,
 } from "../../utils/returns";
-import {
-  notifyDailyReport,
-  notifyNewSale,
-  notifyReturn,
-  notifyStockAlertsForInventoryChange,
-} from "../../services/telegramService";
+import api from "../../services/api";
+import { getApiErrorMessage } from "../../utils/apiFlow";
 
 function Sales() {
   const { currentUser } = useAuth();
@@ -32,12 +26,9 @@ function Sales() {
     setDailySales,
     salesHistory,
     setSalesHistory,
+    activeShift,
     addActivityLog,
   } = useStore();
-
-  const activeShift = JSON.parse(
-    localStorage.getItem("techpro_active_shift") || "null",
-  );
 
   const [cart, setCart] = useState([]);
 
@@ -59,6 +50,10 @@ function Sales() {
   const [returnReason, setReturnReason] = useState("");
 
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [returnSaving, setReturnSaving] = useState(false);
+  const [closeDaySaving, setCloseDaySaving] = useState(false);
+  const [salesError, setSalesError] = useState("");
 
   const addToCart = (product) => {
     const exists = cart.find((item) => item.id === product.id);
@@ -134,113 +129,14 @@ function Sales() {
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  const closeOldDailySales = () => {
-    const savedDailySales = JSON.parse(
-      localStorage.getItem("techpro_daily_sales") || "[]",
-    );
-
-    if (savedDailySales.length === 0) return;
-
-    const oldSales = savedDailySales.filter(
-      (sale) => sale.dateISO && sale.dateISO !== todayISO,
-    );
-
-    const todaySales = savedDailySales.filter(
-      (sale) => !sale.dateISO || sale.dateISO === todayISO,
-    );
-
-    if (oldSales.length === 0) return;
-
-    const savedHistory = JSON.parse(
-      localStorage.getItem("techpro_sales_history") || "[]",
-    );
-
-    const groupedByDate = oldSales.reduce((acc, sale) => {
-      if (!acc[sale.dateISO]) {
-        acc[sale.dateISO] = [];
-      }
-
-      acc[sale.dateISO].push(sale);
-
-      return acc;
-    }, {});
-
-    const historyItems = Object.entries(groupedByDate).map(
-      ([dateISO, sales]) => {
-        const total = getSalesNetTotal(sales);
-
-        const cash = sales
-          .filter((sale) => sale.paymentMethod === "cash")
-          .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
-
-        const card = sales
-          .filter((sale) => sale.paymentMethod === "card")
-          .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
-
-        const transfer = sales
-          .filter((sale) => sale.paymentMethod === "transfer")
-          .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0);
-
-        const returnedTotal = sales.reduce(
-          (acc, sale) => acc + Number(sale.returnedTotal || 0),
-          0,
-        );
-
-        return {
-          id: crypto.randomUUID(),
-          dateISO,
-          date: new Date(dateISO).toLocaleDateString("uz-UZ"),
-          total,
-          cash,
-          card,
-          transfer,
-          returnedTotal,
-          count: sales.length,
-          sales,
-          autoClosed: true,
-        };
-      },
-    );
-
-    const updatedHistory = [...historyItems, ...savedHistory];
-
-    localStorage.setItem(
-      "techpro_sales_history",
-      JSON.stringify(updatedHistory),
-    );
-    localStorage.setItem("techpro_daily_sales", JSON.stringify(todaySales));
-
-    setSalesHistory(updatedHistory);
-    setDailySales(todaySales);
-  };
-
-  const saveRecentSoldProducts = (sale) => {
-    const saved = JSON.parse(
-      localStorage.getItem("techpro_recent_sold_products") || "[]",
-    );
-
-    const soldProducts = sale.items.map((item) => ({
-      id: crypto.randomUUID(),
-      productName: item.name,
-      sku: item.sku,
-      quantity: item.quantity,
-      price: item.price,
-      total: item.price * item.quantity,
-      paymentMethod: sale.paymentMethod,
-      time: sale.time,
-      date: new Date().toLocaleDateString("uz-UZ"),
-    }));
-
-    const updated = [...soldProducts, ...saved].slice(0, 10);
-
-    localStorage.setItem(
-      "techpro_recent_sold_products",
-      JSON.stringify(updated),
-    );
-  };
-
   const handleCheckout = () => {
-    const sale = {
+    if (checkoutSaving || cart.length === 0 || !activeShift) return;
+
+    setCheckoutSaving(true);
+    setSalesError("");
+    const checkoutCart = cart;
+
+    const salePayload = {
       id: crypto.randomUUID(),
 
       dateISO: todayISO,
@@ -266,15 +162,14 @@ function Sales() {
         minute: "2-digit",
       }),
     };
-    setLastSale(sale);
 
-    saveRecentSoldProducts(sale);
+    setLastSale(salePayload);
 
     setReceiptModal(true);
     setSuccess(true);
     window.setTimeout(() => setSuccess(false), 1800);
 
-    setDailySales([sale, ...dailySales]);
+    setDailySales([salePayload, ...dailySales]);
 
     const updatedInventory = inventory.map((product) => {
       const cartItem = cart.find((item) => item.id === product.id);
@@ -290,22 +185,40 @@ function Sales() {
       return product;
     });
 
-    setInventory(updatedInventory);
-    notifyStockAlertsForInventoryChange(inventory, updatedInventory);
-
-    void notifyNewSale(sale);
+    setInventory(updatedInventory, { sync: false });
 
     setCart([]);
 
     addActivityLog({
       type: "sale",
       title: "Savdo amalga oshirildi",
-      description: `${sale.items.length} turdagi mahsulot ${formatPrice(
-        getSaleNetTotal(sale),
+      description: `${salePayload.items.length} turdagi mahsulot ${formatPrice(
+        getSaleNetTotal(salePayload),
       )}ga sotildi`,
       userName: currentUser?.name,
       userRole: currentUser?.role,
     });
+
+    api
+      .post("/sales", salePayload)
+      .then(({ data }) => {
+        setLastSale(data);
+        setDailySales((sales) =>
+          sales.map((sale) => (sale.id === salePayload.id ? data : sale)),
+        );
+      })
+      .catch((error) => {
+        setDailySales((sales) =>
+          sales.filter((sale) => sale.id !== salePayload.id),
+        );
+        setInventory(inventory, { sync: false });
+        setCart(checkoutCart);
+        setReceiptModal(false);
+        setSalesError(getApiErrorMessage(error, "Savdoni saqlashda xatolik"));
+      })
+      .finally(() => {
+        setCheckoutSaving(false);
+      });
   };
 
   const openReturnPermission = (sale) => {
@@ -322,45 +235,51 @@ function Sales() {
   };
 
   const handleReturn = () => {
-    if (!selectedSale || !selectedReturnItem || !returnReason) return;
+    if (returnSaving || !selectedSale || !selectedReturnItem || !returnReason) {
+      return;
+    }
+
+    setReturnSaving(true);
+    setSalesError("");
 
     const returnResult = applyReturnToSales(
       dailySales,
       selectedSale.id,
-      selectedReturnItem.id,
+      selectedReturnItem.productId || selectedReturnItem.id,
       returnQty,
     );
 
-    if (returnResult.quantity <= 0 || !returnResult.returnedItem) return;
+    if (returnResult.quantity <= 0 || !returnResult.returnedItem) {
+      setReturnSaving(false);
+      return;
+    }
 
-    const returnHistory = JSON.parse(
-      localStorage.getItem("techpro_returns") || "[]",
+    const nextInventory = increaseInventoryQuantity(
+      inventory,
+      selectedReturnItem.productId || selectedReturnItem.id,
+      returnResult.quantity,
     );
 
-    const returnItem = buildReturnRecord({
-      sale: returnResult.sale,
-      item: returnResult.returnedItem,
-      quantity: returnResult.quantity,
-      amount: returnResult.amount,
-      reason: returnReason,
-      seller: currentUser,
-    });
-
-    localStorage.setItem(
-      "techpro_returns",
-      JSON.stringify([returnItem, ...returnHistory]),
-    );
-
-    setInventory(
-      increaseInventoryQuantity(
-        inventory,
-        selectedReturnItem.id,
-        returnResult.quantity,
-      ),
-    );
+    setInventory(nextInventory, { sync: false });
     setDailySales(returnResult.sales);
 
-    void notifyReturn(returnItem);
+    api
+      .post("/returns", {
+        saleId: selectedSale.id,
+        productId: selectedReturnItem.productId || selectedReturnItem.id,
+        quantity: returnResult.quantity,
+        reason: returnReason,
+      })
+      .catch((error) => {
+        setInventory(inventory, { sync: false });
+        setDailySales(dailySales);
+        setSalesError(
+          getApiErrorMessage(error, "Vozvratni saqlashda xatolik"),
+        );
+      })
+      .finally(() => {
+        setReturnSaving(false);
+      });
 
     addActivityLog({
       type: "return",
@@ -392,6 +311,11 @@ function Sales() {
   const totalSalesAmount = getSalesNetTotal(dailySales);
 
   const closeDailySales = () => {
+    if (closeDaySaving || dailySales.length === 0) return;
+
+    setCloseDaySaving(true);
+    setSalesError("");
+
     const historyItem = {
       id: crypto.randomUUID(),
 
@@ -419,74 +343,25 @@ function Sales() {
       closedBy: currentUser?.name,
     };
 
-    const existingDay = salesHistory.find(
-      (day) => day.date === historyItem.date,
-    );
-
-    if (existingDay) {
-      const updatedHistory = salesHistory.map((day) => {
-        if (day.date === historyItem.date) {
-          const getExistingPaymentTotal = (paymentMethod) =>
-            day.sales?.length
-              ? day.sales
-                  .filter((sale) => sale.paymentMethod === paymentMethod)
-                  .reduce((acc, sale) => acc + getSaleNetTotal(sale), 0)
-              : Number(day[paymentMethod] || 0);
-
-          return {
-            ...day,
-
-            total: getDayNetTotal(day) + historyItem.total,
-
-            cash: getExistingPaymentTotal("cash") + historyItem.cash,
-
-            card: getExistingPaymentTotal("card") + historyItem.card,
-
-            transfer:
-              getExistingPaymentTotal("transfer") + historyItem.transfer,
-
-            returnedTotal:
-              Number(day.returnedTotal || 0) +
-              Number(historyItem.returnedTotal || 0),
-
-            count: day.count + historyItem.count,
-
-            sales: [...day.sales, ...historyItem.sales],
-
-            closedBy: historyItem.closedBy,
-          };
-        }
-
-        return day;
+    api
+      .post("/sales/close-day", historyItem)
+      .catch((error) => {
+        setSalesHistory(salesHistory);
+        setDailySales(dailySales);
+        setSalesError(
+          getApiErrorMessage(error, "Kunlik savdoni yakunlashda xatolik"),
+        );
+      })
+      .finally(() => {
+        setCloseDaySaving(false);
       });
 
-      setSalesHistory(updatedHistory);
-    } else {
-      setSalesHistory([historyItem, ...salesHistory]);
-    }
-
-    void notifyDailyReport(historyItem);
+    setSalesHistory([historyItem, ...salesHistory]);
 
     setDailySales([]);
 
     setShowCloseModal(false);
   };
-
-  useEffect(() => {
-    localStorage.setItem("techpro_inventory", JSON.stringify(inventory));
-  }, [inventory]);
-
-  useEffect(() => {
-    localStorage.setItem("techpro_daily_sales", JSON.stringify(dailySales));
-  }, [dailySales]);
-
-  useEffect(() => {
-    localStorage.setItem("techpro_sales_history", JSON.stringify(salesHistory));
-  }, [salesHistory]);
-
-  useEffect(() => {
-    closeOldDailySales();
-  }, []);
 
   return (
     <div className="sales-page">
@@ -630,9 +505,11 @@ function Sales() {
           <button
             className="checkout-btn"
             onClick={handleCheckout}
-            disabled={cart.length === 0 || !activeShift}
+            disabled={cart.length === 0 || !activeShift || checkoutSaving}
           >
-            {!activeShift
+            {checkoutSaving
+              ? "Saqlanmoqda..."
+              : !activeShift
               ? "Avval kassa oching"
               : paymentMethod === "cash"
                 ? "Naqd to‘lov"
@@ -720,6 +597,7 @@ function Sales() {
       {success && (
         <div className="success-alert">Savdo muvaffaqiyatli yakunlandi</div>
       )}
+      {salesError && <div className="success-alert error">{salesError}</div>}
       {showCloseModal && (
         <div className="modal-overlay">
           <div className="close-modal">
@@ -767,9 +645,10 @@ function Sales() {
 
               <button
                 className="confirm-btn"
+                disabled={closeDaySaving}
                 onClick={closeDailySales}
               >
-                Yakunlash
+                {closeDaySaving ? "Saqlanmoqda..." : "Yakunlash"}
               </button>
             </div>
           </div>
@@ -923,8 +802,12 @@ function Sales() {
                 Bekor qilish
               </button>
 
-              <button className="confirm-return-btn" onClick={handleReturn}>
-                Vozvratni saqlash
+              <button
+                className="confirm-return-btn"
+                disabled={returnSaving}
+                onClick={handleReturn}
+              >
+                {returnSaving ? "Saqlanmoqda..." : "Vozvratni saqlash"}
               </button>
             </div>
           </div>

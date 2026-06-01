@@ -17,7 +17,11 @@ import { useAuth } from "./context/AuthContext";
 import Shifts from "./pages/shifts/Shifts";
 
 function ProtectedRoute({ children }) {
-  const { currentUser } = useAuth();
+  const { currentUser, authLoading } = useAuth();
+
+  if (authLoading) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -27,7 +31,11 @@ function ProtectedRoute({ children }) {
 }
 
 function RoleRoute({ children, roles }) {
-  const { currentUser } = useAuth();
+  const { currentUser, authLoading } = useAuth();
+
+  if (authLoading) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;

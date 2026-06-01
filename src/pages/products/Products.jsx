@@ -14,7 +14,12 @@ import {
 } from "react-icons/fi";
 
 import { formatPrice } from "../../utils/formatPrice";
-import { notifyStockAlertsForInventoryChange } from "../../services/telegramService";
+import api from "../../services/api";
+import {
+  getApiErrorMessage,
+  parseProductSaveResponse,
+  upsertById,
+} from "../../utils/apiFlow";
 
 import { useStore } from "../../context/StoreContext";
 
@@ -25,10 +30,13 @@ function Products() {
   const isAdmin = currentUser?.role === "admin";
   const [search, setSearch] = useState("");
 
-  const { inventory, setInventory, addActivityLog } = useStore();
+  const { inventory, setInventory, setSuppliers, addActivityLog } = useStore();
 
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState(null);
+  const [productError, setProductError] = useState("");
 
   const [sortType, setSortType] = useState("az");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -56,10 +64,12 @@ function Products() {
     });
 
     setEditingProduct(null);
+    setProductError("");
   };
 
   const openEditModal = (product) => {
     setEditingProduct(product);
+    setProductError("");
 
     setFormData({
       name: product.name,
@@ -75,26 +85,66 @@ function Products() {
   };
 
   const handleSaveProduct = () => {
-    if (!formData.name || !formData.sku || !formData.sellPrice) return;
+    if (savingProduct || !formData.name || !formData.sku || !formData.sellPrice) {
+      return;
+    }
+
+    setSavingProduct(true);
+    setProductError("");
+
+    const productPayload = {
+      ...formData,
+      quantity: Math.max(0, Number(formData.quantity || 0)),
+      stock: Math.max(0, Number(formData.quantity || 0)),
+      costPrice: Number(formData.costPrice || 0),
+      sellPrice: Number(formData.sellPrice || 0),
+      price: Number(formData.sellPrice || 0),
+      paymentStatus: "paid",
+      debtAmount: 0,
+    };
 
     if (editingProduct) {
-      const nextSellPrice = Number(formData.sellPrice);
-      const nextQuantity = Number(formData.quantity);
+      const nextSellPrice = productPayload.sellPrice;
+      const nextQuantity = productPayload.quantity;
 
       const updated = inventory.map((item) =>
-        item.id === editingProduct.id
+        String(item.id) === String(editingProduct.id)
           ? {
               ...item,
-              ...formData,
-              quantity: Number(formData.quantity),
-              costPrice: Number(formData.costPrice),
-              sellPrice: Number(formData.sellPrice),
+              ...productPayload,
             }
           : item,
       );
 
-      setInventory(updated);
-      notifyStockAlertsForInventoryChange(inventory, updated);
+      setInventory(updated, { sync: false });
+
+      api
+        .put(`/products/${String(editingProduct.id)}`, productPayload)
+        .then(({ data }) => {
+          const { product, supplier } = parseProductSaveResponse(data);
+
+          setInventory(
+            (current) =>
+              current.map((item) =>
+                String(item.id) === String(editingProduct.id) ? product : item,
+              ),
+            { sync: false },
+          );
+
+          if (supplier) {
+            setSuppliers((current) => upsertById(current, supplier));
+          }
+
+          resetForm();
+          setShowModal(false);
+        })
+        .catch((error) => {
+          setInventory(inventory, { sync: false });
+          setProductError(
+            getApiErrorMessage(error, "Mahsulotni saqlashda xatolik"),
+          );
+        })
+        .finally(() => setSavingProduct(false));
 
       addActivityLog({
         type: "product",
@@ -128,14 +178,38 @@ function Products() {
     } else {
       const newProduct = {
         id: crypto.randomUUID(),
-        ...formData,
-        quantity: Number(formData.quantity),
-        costPrice: Number(formData.costPrice),
-        sellPrice: Number(formData.sellPrice),
+        ...productPayload,
       };
 
-      setInventory([newProduct, ...inventory]);
-      notifyStockAlertsForInventoryChange(inventory, [newProduct, ...inventory]);
+      setInventory([newProduct, ...inventory], { sync: false });
+
+      api
+        .post("/products", newProduct)
+        .then(({ data }) => {
+          const { product, supplier } = parseProductSaveResponse(data);
+
+          setInventory(
+            (current) =>
+              current.map((item) =>
+                String(item.id) === String(newProduct.id) ? product : item,
+              ),
+            { sync: false },
+          );
+
+          if (supplier) {
+            setSuppliers((current) => upsertById(current, supplier));
+          }
+
+          resetForm();
+          setShowModal(false);
+        })
+        .catch((error) => {
+          setInventory(inventory, { sync: false });
+          setProductError(
+            getApiErrorMessage(error, "Mahsulot qo'shishda xatolik"),
+          );
+        })
+        .finally(() => setSavingProduct(false));
 
       addActivityLog({
         type: "product",
@@ -146,14 +220,25 @@ function Products() {
       });
     }
 
-    resetForm();
-    setShowModal(false);
   };
 
   const handleDeleteProduct = (id) => {
+    if (deletingProductId) return;
+
     const product = inventory.find((item) => item.id === id);
     const filtered = inventory.filter((item) => item.id !== id);
-    setInventory(filtered);
+    setDeletingProductId(id);
+    setInventory(filtered, { sync: false });
+
+    api
+      .delete(`/products/${id}`)
+      .catch((error) => {
+        setInventory(inventory, { sync: false });
+        setProductError(
+          getApiErrorMessage(error, "Mahsulotni o'chirishda xatolik"),
+        );
+      })
+      .finally(() => setDeletingProductId(null));
 
     if (product) {
       addActivityLog({
@@ -471,6 +556,8 @@ function Products() {
         </div>
       </div>
 
+      {productError && !showModal && <div className="form-error">{productError}</div>}
+
       <div className="products-table-wrapper">
         <table className="products-table">
           <thead>
@@ -537,6 +624,7 @@ function Products() {
 
                     <button
                       className="delete"
+                      disabled={deletingProductId === product.id}
                       onClick={() => {
                         if (!isAdmin) return;
                         handleDeleteProduct(product.id);
@@ -631,8 +719,14 @@ function Products() {
                 }
               />
 
-              <button className="save-product-btn" onClick={handleSaveProduct}>
-                Saqlash
+              {productError && <div className="form-error">{productError}</div>}
+
+              <button
+                className="save-product-btn"
+                disabled={savingProduct}
+                onClick={handleSaveProduct}
+              >
+                {savingProduct ? "Saqlanmoqda..." : "Saqlash"}
               </button>
             </div>
           </div>

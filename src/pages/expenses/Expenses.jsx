@@ -10,6 +10,9 @@ import {
 } from "react-icons/fi";
 
 import { formatPrice } from "../../utils/formatPrice";
+import { useStore } from "../../context/StoreContext";
+import api from "../../services/api";
+import { getApiErrorMessage } from "../../utils/apiFlow";
 
 import "./expenses.scss";
 
@@ -56,6 +59,7 @@ const getCategoryColor = (category) =>
   expenseCategoryColors[category] || defaultCategoryColor;
 
 function Expenses() {
+  const { expenses, setExpenses } = useStore();
   const expenseCategoryOptions = [
     "Ijara",
     "Reklama",
@@ -65,14 +69,11 @@ function Expenses() {
     "Boshqa",
   ];
 
-  const [expenses, setExpenses] = useState(() => {
-    const saved = localStorage.getItem("techpro_expenses");
-
-    return saved ? JSON.parse(saved) : [];
-  });
-
   const [showModal, setShowModal] = useState(false);
   const [openSelect, setOpenSelect] = useState(false);
+  const [savingExpense, setSavingExpense] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState(null);
+  const [expenseError, setExpenseError] = useState("");
 
   const [formData, setFormData] = useState({
     title: "",
@@ -81,40 +82,52 @@ function Expenses() {
     note: "",
   });
 
-  const saveExpenses = (data) => {
-    setExpenses(data);
+  const handleSave = async () => {
+    if (savingExpense || !formData.title || !formData.amount) return;
 
-    localStorage.setItem("techpro_expenses", JSON.stringify(data));
+    setSavingExpense(true);
+    setExpenseError("");
+
+    try {
+      const { data: newExpense } = await api.post("/expenses", {
+        title: formData.title,
+        category: formData.category || "Boshqa",
+        amount: Number(formData.amount),
+        note: formData.note,
+      });
+
+      setExpenses([newExpense, ...expenses]);
+
+      setFormData({
+        title: "",
+        category: "",
+        amount: "",
+        note: "",
+      });
+
+      setShowModal(false);
+    } catch (error) {
+      setExpenseError(getApiErrorMessage(error, "Xarajat saqlashda xatolik"));
+    } finally {
+      setSavingExpense(false);
+    }
   };
 
-  const handleSave = () => {
-    if (!formData.title || !formData.amount) return;
+  const handleDelete = async (id) => {
+    if (deletingExpenseId) return;
 
-    const newExpense = {
-      id: crypto.randomUUID(),
-      title: formData.title,
-      category: formData.category || "Boshqa",
-      amount: Number(formData.amount),
-      note: formData.note,
-      date: new Date().toLocaleDateString("uz-UZ"),
-    };
+    const previousExpenses = expenses;
+    setDeletingExpenseId(id);
+    setExpenses(expenses.filter((item) => item.id !== id));
 
-    saveExpenses([newExpense, ...expenses]);
-
-    setFormData({
-      title: "",
-      category: "",
-      amount: "",
-      note: "",
-    });
-
-    setShowModal(false);
-  };
-
-  const handleDelete = (id) => {
-    const filtered = expenses.filter((item) => item.id !== id);
-
-    saveExpenses(filtered);
+    try {
+      await api.delete(`/expenses/${id}`);
+    } catch (error) {
+      setExpenses(previousExpenses);
+      setExpenseError(getApiErrorMessage(error, "Xarajat o'chirishda xatolik"));
+    } finally {
+      setDeletingExpenseId(null);
+    }
   };
 
   const totalExpenses = expenses.reduce(
@@ -133,12 +146,20 @@ function Expenses() {
           <p>Savdo pulidan qilingan barcha xarajatlar</p>
         </div>
 
-        <button className="expense-btn" onClick={() => setShowModal(true)}>
+        <button
+          className="expense-btn"
+          onClick={() => {
+            setExpenseError("");
+            setShowModal(true);
+          }}
+        >
           <FiPlus />
 
           <span>Xarajat qo‘shish</span>
         </button>
       </div>
+
+      {expenseError && !showModal && <div className="form-error">{expenseError}</div>}
 
       <div className="expenses-summary">
         <div className="summary-icon">
@@ -180,7 +201,10 @@ function Expenses() {
               <div className="expense-right">
                 <strong>{formatPrice(item.amount)}</strong>
 
-                <button onClick={() => handleDelete(item.id)}>
+                <button
+                  disabled={deletingExpenseId === item.id}
+                  onClick={() => handleDelete(item.id)}
+                >
                   <FiTrash2 />
                 </button>
               </div>
@@ -274,8 +298,14 @@ function Expenses() {
                 }
               />
 
-              <button className="save-expense-btn" onClick={handleSave}>
-                Saqlash
+              {expenseError && <div className="form-error">{expenseError}</div>}
+
+              <button
+                className="save-expense-btn"
+                disabled={savingExpense}
+                onClick={handleSave}
+              >
+                {savingExpense ? "Saqlanmoqda..." : "Saqlash"}
               </button>
             </div>
           </div>

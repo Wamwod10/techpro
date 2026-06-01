@@ -16,20 +16,25 @@ import {
   getSaleProfit,
 } from "../../utils/returns";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   saveTelegramSettings,
-  getTelegramSettings,
   sendTelegramMessage,
 } from "../../services/telegramService";
 
 import "./dashboard.scss";
 
 function Dashboard() {
-  const { inventory, dailySales, suppliers, salesHistory } = useStore();
-
-  const expenses = JSON.parse(localStorage.getItem("techpro_expenses") || "[]");
-  const returns = JSON.parse(localStorage.getItem("techpro_returns") || "[]");
+  const {
+    inventory,
+    dailySales,
+    suppliers,
+    salesHistory,
+    expenses,
+    returns,
+    telegramSettings: savedTelegramSettings,
+    setTelegramSettings: setSavedTelegramSettings,
+  } = useStore();
 
   const totalReturns = returns.reduce(
     (acc, item) => acc + Number(item.amount || 0),
@@ -42,21 +47,26 @@ function Dashboard() {
     ...salesHistory.flatMap((day) => day.sales || []),
   ];
 
-  const [telegramSettings, setTelegramSettings] = useState(() => {
-    return (
-      getTelegramSettings() || {
-        botToken: "",
-        chatId: "",
-        newSale: true,
-        dailyReport: true,
-        returns: true,
-        lowStock: true,
-        outOfStock: true,
-        shiftOpen: true,
-        shiftClose: true,
-      }
-    );
+  const [telegramSettings, setTelegramSettings] = useState({
+    botToken: "",
+    chatId: "",
+    newSale: true,
+    dailyReport: true,
+    returns: true,
+    lowStock: true,
+    outOfStock: true,
+    shiftOpen: true,
+    shiftClose: true,
   });
+
+  useEffect(() => {
+    if (savedTelegramSettings) {
+      setTelegramSettings((current) => ({
+        ...current,
+        ...savedTelegramSettings,
+      }));
+    }
+  }, [savedTelegramSettings]);
 
   const handleTelegramChange = (key, value) => {
     setTelegramSettings({
@@ -65,18 +75,17 @@ function Dashboard() {
     });
   };
 
-  const handleSaveTelegram = () => {
-    saveTelegramSettings(telegramSettings);
+  const handleSaveTelegram = async () => {
+    const settings = await saveTelegramSettings(telegramSettings);
+    setSavedTelegramSettings(settings);
     alert("Telegram sozlamalari saqlandi");
   };
 
   const handleTestTelegram = async () => {
-    saveTelegramSettings(telegramSettings);
+    const settings = await saveTelegramSettings(telegramSettings);
+    setSavedTelegramSettings(settings);
 
-    await sendTelegramMessage(
-      "✅ <b>TECHPRO Telegram test</b>\n\nTelegram bot muvaffaqiyatli ulandi.",
-      null,
-    );
+    await sendTelegramMessage();
 
     alert("Test xabar yuborildi");
   };
@@ -201,7 +210,7 @@ function Dashboard() {
 
     allSales.forEach((sale) => {
       (sale.items || []).forEach((saleItem) => {
-        if (saleItem.id === item.id) {
+        if (String(saleItem.productId || saleItem.id) === String(item.id)) {
           categoryProfitMap[category] +=
             (Number(saleItem.price || 0) -
               Number(saleItem.costPrice || item.costPrice || 0)) *

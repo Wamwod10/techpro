@@ -6,12 +6,12 @@ import { useAuth } from "../../context/AuthContext";
 import { formatPrice } from "../../utils/formatPrice";
 import {
   notifyDailyReport,
-  notifyReturn,
 } from "../../services/telegramService";
+import api from "../../services/api";
+import { getApiErrorMessage } from "../../utils/apiFlow";
 import {
   RETURN_REASONS,
   applyReturnToHistory,
-  buildReturnRecord,
   getDayNetTotal,
   getAvailableReturnQty,
   getSaleNetTotal,
@@ -27,6 +27,8 @@ function History() {
     setSalesHistory,
     inventory,
     setInventory,
+    returns,
+    setReturns,
     addActivityLog,
   } = useStore();
   const [expandedDay, setExpandedDay] = useState(null);
@@ -42,9 +44,8 @@ function History() {
   const [selectedReturnItem, setSelectedReturnItem] = useState(null);
   const [returnQty, setReturnQty] = useState(1);
   const [returnReason, setReturnReason] = useState("");
-  const [returns, setReturns] = useState(() =>
-    JSON.parse(localStorage.getItem("techpro_returns") || "[]"),
-  );
+  const [returnSaving, setReturnSaving] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const paymentLabels = {
     cash: "Naqd",
@@ -294,54 +295,63 @@ function History() {
       closedBy: day.closedBy || currentUser?.name,
     });
 
-    alert("Kunlik savdo Telegramga yuborildi");
+    setHistoryError("");
   };
 
-  const handleReturn = () => {
-    if (!selectedSale || !selectedDay || !selectedReturnItem || !returnReason) {
+  const handleReturn = async () => {
+    if (
+      returnSaving ||
+      !selectedSale ||
+      !selectedDay ||
+      !selectedReturnItem ||
+      !returnReason
+    ) {
       return;
     }
+
+    setReturnSaving(true);
+    setHistoryError("");
 
     const dayId = selectedDay.id || selectedDay.date;
     const returnResult = applyReturnToHistory(
       salesHistory,
       dayId,
       selectedSale.id,
-      selectedReturnItem.id,
+      selectedReturnItem.productId || selectedReturnItem.id,
       returnQty,
     );
 
-    if (returnResult.quantity <= 0 || !returnResult.returnedItem) return;
+    if (returnResult.quantity <= 0 || !returnResult.returnedItem) {
+      setReturnSaving(false);
+      return;
+    }
 
-    const returnHistory = JSON.parse(
-      localStorage.getItem("techpro_returns") || "[]",
-    );
-
-    const returnItem = buildReturnRecord({
-      sale: returnResult.sale,
-      item: returnResult.returnedItem,
-      quantity: returnResult.quantity,
-      amount: returnResult.amount,
-      reason: returnReason,
-      seller: currentUser,
-    });
-
-    localStorage.setItem(
-      "techpro_returns",
-      JSON.stringify([returnItem, ...returnHistory]),
-    );
-    setReturns([returnItem, ...returnHistory]);
+    try {
+      const { data } = await api.post("/returns", {
+        saleId: selectedSale.id,
+        productId: selectedReturnItem.productId || selectedReturnItem.id,
+        quantity: returnResult.quantity,
+        reason: returnReason,
+      });
+      setReturns([data, ...returns]);
+    } catch (error) {
+      setHistoryError(
+        getApiErrorMessage(error, "Vozvratni saqlashda xatolik"),
+      );
+      setReturnSaving(false);
+      return;
+    } finally {
+      setReturnSaving(false);
+    }
 
     setInventory(
       increaseInventoryQuantity(
         inventory,
-        selectedReturnItem.id,
+        selectedReturnItem.productId || selectedReturnItem.id,
         returnResult.quantity,
       ),
     );
     setSalesHistory(returnResult.history);
-
-    void notifyReturn(returnItem);
 
     addActivityLog({
       type: "return",
@@ -453,6 +463,8 @@ function History() {
       </div>
 
       <div className="history-toolbar">
+        {historyError && <div className="form-error">{historyError}</div>}
+
         <div className="history-search">
           <FiSearch />
 
@@ -777,8 +789,12 @@ function History() {
                 Bekor qilish
               </button>
 
-              <button className="confirm-return-btn" onClick={handleReturn}>
-                Vozvratni saqlash
+              <button
+                className="confirm-return-btn"
+                disabled={returnSaving}
+                onClick={handleReturn}
+              >
+                {returnSaving ? "Saqlanmoqda..." : "Vozvratni saqlash"}
               </button>
             </div>
           </div>

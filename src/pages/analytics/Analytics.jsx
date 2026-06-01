@@ -13,7 +13,9 @@ function Analytics() {
 
   const productStats = inventory.map((product) => {
     const soldItems = allSales.flatMap((sale) =>
-      (sale.items || []).filter((item) => item.id === product.id),
+      (sale.items || []).filter(
+        (item) => String(item.productId || item.id) === String(product.id),
+      ),
     );
 
     const soldQty = soldItems.reduce(

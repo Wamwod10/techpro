@@ -18,10 +18,10 @@ function Login() {
 
   const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const result = login(formData.username, formData.password);
+    const result = await login(formData.username, formData.password);
 
     if (!result.success) {
       setError(result.message);

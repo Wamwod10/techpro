@@ -30,3 +30,21 @@ img{
     padding: 15px 0px;
     margin: 0 auto;
 }
+
+.form-error{
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+body.dark .form-error,
+.dark .form-error{
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(248, 113, 113, 0.12);
+    color: #fca5a5;
+}

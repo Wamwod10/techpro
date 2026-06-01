@@ -89,7 +89,7 @@ export const clampReturnQty = (item, qty) => {
 export const applyReturnToSale = (sale, productId, requestedQty) => {
   const normalizedSale = normalizeSaleReturns(sale);
   const targetItem = normalizedSale.items.find(
-    (item) => String(item.id) === String(productId),
+    (item) => String(item.productId || item.id) === String(productId),
   );
 
   if (!targetItem) {
@@ -114,7 +114,7 @@ export const applyReturnToSale = (sale, productId, requestedQty) => {
   }
 
   const updatedItems = normalizedSale.items.map((item) => {
-    if (String(item.id) !== String(productId)) {
+    if (String(item.productId || item.id) !== String(productId)) {
       return normalizeSaleItemReturn(item);
     }
 
@@ -252,7 +252,7 @@ export const buildReturnRecord = ({
   return {
     id: crypto.randomUUID(),
     saleId: sale.id,
-    productId: item.id,
+    productId: item.productId || item.id,
     productName: item.name,
     sku: item.sku,
     quantity,

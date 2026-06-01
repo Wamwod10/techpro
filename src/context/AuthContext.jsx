@@ -1,62 +1,63 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import api from "../services/api";
 
 const AuthContext = createContext();
+const allowedLocalStorageKeys = new Set(["techpro_token", "techpro_theme"]);
 
-const users = [
-  {
-    id: 1,
-    name: "Administrator",
-    role: "admin",
-    username: "admin",
-    password: "1234",
-  },
-  {
-    id: 2,
-    name: "Sotuvchi 1",
-    role: "cashier",
-    username: "sotuvchi1",
-    password: "1111",
-  },
-  {
-    id: 3,
-    name: "Sotuvchi 2",
-    role: "cashier",
-    username: "sotuvchi2",
-    password: "2222",
-  },
-];
+const cleanupLegacyLocalStorage = () => {
+  Object.keys(localStorage).forEach((key) => {
+    if (key.startsWith("techpro_") && !allowedLocalStorageKeys.has(key)) {
+      localStorage.removeItem(key);
+    }
+  });
+};
 
 export const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem("techpro_user");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  useEffect(() => {
+    cleanupLegacyLocalStorage();
 
-  const login = (username, password) => {
-    const foundUser = users.find(
-      (user) => user.username === username && user.password === password,
-    );
+    const token = localStorage.getItem("techpro_token");
 
-    if (!foundUser) {
-      return {
-        success: false,
-        message: "Login yoki parol noto‘g‘ri",
-      };
+    if (!token) {
+      setAuthLoading(false);
+      return;
     }
 
-    localStorage.setItem("techpro_user", JSON.stringify(foundUser));
+    api
+      .get("/auth/me")
+      .then(({ data }) => setCurrentUser(data))
+      .catch(() => {
+        localStorage.removeItem("techpro_token");
+        setCurrentUser(null);
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
 
-    setCurrentUser(foundUser);
+  const login = async (username, password) => {
+    try {
+      const { data } = await api.post("/auth/login", { username, password });
 
-    return {
-      success: true,
-      user: foundUser,
-    };
+      localStorage.setItem("techpro_token", data.token);
+
+      setCurrentUser(data.user);
+
+      return {
+        success: true,
+        user: data.user,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || "Login yoki parol noto'g'ri",
+      };
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem("techpro_user");
+    localStorage.removeItem("techpro_token");
 
     setCurrentUser(null);
   };
@@ -65,6 +66,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         currentUser,
+        authLoading,
         login,
         logout,
       }}

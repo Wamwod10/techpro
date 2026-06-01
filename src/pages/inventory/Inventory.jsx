@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { useStore } from "../../context/StoreContext";
 import { useAuth } from "../../context/AuthContext";
-import { notifyStockAlertsForInventoryChange } from "../../services/telegramService";
+import api from "../../services/api";
 
 import {
   FiPlus,
@@ -16,6 +16,12 @@ import {
   FiCheck,
 } from "react-icons/fi";
 import { formatPrice } from "../../utils/formatPrice";
+import {
+  getApiErrorMessage,
+  isCreditPaymentStatus,
+  parseProductSaveResponse,
+  upsertById,
+} from "../../utils/apiFlow";
 
 function Inventory() {
   const { currentUser } = useAuth();
@@ -34,15 +40,10 @@ function Inventory() {
   const [editingItem, setEditingItem] = useState(null);
   const [openSelect, setOpenSelect] = useState(null);
 
-  const [savedCategories, setSavedCategories] = useState(() => {
-    try {
-      return JSON.parse(
-        localStorage.getItem("techpro_inventory_categories") || "[]",
-      );
-    } catch {
-      return [];
-    }
-  });
+  const [savedCategories, setSavedCategories] = useState([]);
+  const [savingInventory, setSavingInventory] = useState(false);
+  const [deletingInventoryId, setDeletingInventoryId] = useState(null);
+  const [inventoryError, setInventoryError] = useState("");
 
   const generateSku = () => {
     return `TP-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -76,6 +77,7 @@ function Inventory() {
 
   const handleEdit = (item) => {
     setEditingItem(item);
+    setInventoryError("");
 
     setFormData({
       ...item,
@@ -126,8 +128,10 @@ function Inventory() {
   const selectedCategoryLabel = formData.category || "Kategoriya tanlang";
 
   const selectedPaymentLabel =
-    paymentOptions.find((option) => option.value === formData.paymentStatus)
-      ?.label || "To'lov holati";
+    isCreditPaymentStatus(formData.paymentStatus)
+      ? "Qarzga olingan"
+      : paymentOptions.find((option) => option.value === formData.paymentStatus)
+          ?.label || "To'lov holati";
 
   const supplierOptions = [
     ...new Set(
@@ -141,9 +145,42 @@ function Inventory() {
     Number(formData.costPrice || 0) * Number(formData.quantity || 0);
 
   const normalizedDebtAmount =
-    formData.paymentStatus === "debt"
+    isCreditPaymentStatus(formData.paymentStatus)
       ? Number(formData.debtAmount || purchaseTotal || 0)
       : 0;
+
+  const buildProductPayload = () => {
+    const selectedCategory =
+      formData.category === "Boshqa"
+        ? (formData.customCategory || "").trim()
+        : formData.category;
+
+    const quantity = Math.max(0, Number(formData.quantity || 0));
+    const sellPrice = Number(formData.sellPrice || 0);
+
+    return {
+      name: formData.name,
+      sku: formData.sku,
+      barcode: formData.barcode || null,
+      supplier: (formData.supplier || "").trim(),
+      quantity,
+      stock: quantity,
+      costPrice: Number(formData.costPrice || 0),
+      sellPrice,
+      price: sellPrice,
+      category: selectedCategory || "Boshqa",
+      returnDays: formData.returnDays || "",
+      paymentStatus: isCreditPaymentStatus(formData.paymentStatus)
+        ? "credit"
+        : "paid",
+      debtAmount:
+        isCreditPaymentStatus(formData.paymentStatus)
+          ? Number(formData.debtAmount || normalizedDebtAmount || 0)
+          : 0,
+      supplierPhone: formData.supplierPhone || "",
+      date: formData.date || new Date().toISOString().split("T")[0],
+    };
+  };
 
   const saveNewCategory = (category) => {
     const cleanCategory = category.trim();
@@ -160,201 +197,179 @@ function Inventory() {
     const nextCategories = [...savedCategories, cleanCategory];
 
     setSavedCategories(nextCategories);
-    localStorage.setItem(
-      "techpro_inventory_categories",
-      JSON.stringify(nextCategories),
-    );
-  };
-
-  const upsertSupplierDebt = (supplierName, supplierPhone, debtAmount, item) => {
-    const cleanSupplierName = supplierName.trim();
-
-    if (!cleanSupplierName || debtAmount <= 0) {
-      return suppliers;
-    }
-
-    const debtEntry = {
-      id: Date.now(),
-      type: "inventory",
-      status: "Qarz",
-      productName: item.name,
-      amount: debtAmount,
-      phone: supplierPhone,
-      date: item.date,
-      time: new Date().toLocaleTimeString("uz-UZ", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-
-    const existingSupplier = suppliers.find(
-      (supplier) =>
-        supplier.name?.trim().toLowerCase() ===
-        cleanSupplierName.toLowerCase(),
-    );
-
-    if (!existingSupplier) {
-      return [
-        {
-          id: Date.now(),
-          name: cleanSupplierName,
-          phone: supplierPhone,
-          debt: debtAmount,
-          paid: 0,
-          deadline: item.date,
-          transactions: [debtEntry],
-          orders: [debtEntry],
-        },
-        ...suppliers,
-      ];
-    }
-
-    return suppliers.map((supplier) => {
-      if (supplier.id !== existingSupplier.id) {
-        return supplier;
-      }
-
-      return {
-        ...supplier,
-        phone: supplier.phone || supplierPhone,
-        deadline: supplier.deadline || item.date,
-        debt: Number(supplier.debt || 0) + debtAmount,
-        transactions: [debtEntry, ...(supplier.transactions || [])],
-        orders: [debtEntry, ...(supplier.orders || [])],
-      };
-    });
   };
 
   const handleUpdate = () => {
-    const nextCostPrice = Number(formData.costPrice);
-    const nextSellPrice = Number(formData.sellPrice);
-    const nextQuantity = Number(formData.quantity);
+    if (savingInventory || !editingItem) return;
+
+    setSavingInventory(true);
+    setInventoryError("");
+
+    const productPayload = buildProductPayload();
+    const nextCostPrice = productPayload.costPrice;
+    const nextSellPrice = productPayload.sellPrice;
+    const nextQuantity = productPayload.quantity;
 
     const updatedInventory = inventory.map((item) =>
-      item.id === editingItem.id
+      String(item.id) === String(editingItem.id)
         ? {
-            ...formData,
-
+            ...item,
+            ...productPayload,
             id: editingItem.id,
           }
         : item,
     );
 
-    setInventory(updatedInventory);
-    notifyStockAlertsForInventoryChange(inventory, updatedInventory);
+    setInventory(updatedInventory, { sync: false });
 
-    addActivityLog({
-      type: "inventory",
-      title: "Mahsulot tahrirlandi",
-      description: `${formData.name} ombor ma'lumotlari yangilandi`,
-      userName: currentUser?.name,
-      userRole: currentUser?.role,
-    });
+    api
+      .put(`/products/${String(editingItem.id)}`, productPayload)
+      .then(({ data }) => {
+        const { product, supplier } = parseProductSaveResponse(data);
 
-    if (Number(editingItem.sellPrice) !== nextSellPrice) {
-      addActivityLog({
-        type: "price",
-        title: "Narx o'zgartirildi",
-        description: `${editingItem.name} sotuv narxi ${formatPrice(
-          editingItem.sellPrice,
-        )}dan ${formatPrice(nextSellPrice)}ga o'zgartirildi`,
-        userName: currentUser?.name,
-        userRole: currentUser?.role,
-      });
-    }
+        setInventory(
+          (current) =>
+            current.map((item) =>
+              String(item.id) === String(editingItem.id) ? product : item,
+            ),
+          { sync: false },
+        );
 
-    if (Number(editingItem.costPrice) !== nextCostPrice) {
-      addActivityLog({
-        type: "price",
-        title: "Tannarx o'zgartirildi",
-        description: `${editingItem.name} tannarxi ${formatPrice(
-          editingItem.costPrice,
-        )}dan ${formatPrice(nextCostPrice)}ga o'zgartirildi`,
-        userName: currentUser?.name,
-        userRole: currentUser?.role,
-      });
-    }
+        if (supplier) {
+          setSuppliers((current) => upsertById(current, supplier));
+        }
 
-    if (Number(editingItem.quantity) !== nextQuantity) {
-      addActivityLog({
-        type: "stock",
-        title: "Qoldiq o'zgartirildi",
-        description: `${editingItem.name} qoldig'i ${editingItem.quantity} donadan ${nextQuantity} donaga o'zgartirildi`,
-        userName: currentUser?.name,
-        userRole: currentUser?.role,
-      });
-    }
+        addActivityLog({
+          type: "inventory",
+          title: "Mahsulot tahrirlandi",
+          description: `${formData.name} ombor ma'lumotlari yangilandi`,
+          userName: currentUser?.name,
+          userRole: currentUser?.role,
+        });
 
-    setEditModal(false);
+        if (Number(editingItem.sellPrice) !== nextSellPrice) {
+          addActivityLog({
+            type: "price",
+            title: "Narx o'zgartirildi",
+            description: `${editingItem.name} sotuv narxi ${formatPrice(
+              editingItem.sellPrice,
+            )}dan ${formatPrice(nextSellPrice)}ga o'zgartirildi`,
+            userName: currentUser?.name,
+            userRole: currentUser?.role,
+          });
+        }
 
-    setEditingItem(null);
+        if (Number(editingItem.costPrice) !== nextCostPrice) {
+          addActivityLog({
+            type: "price",
+            title: "Tannarx o'zgartirildi",
+            description: `${editingItem.name} tannarxi ${formatPrice(
+              editingItem.costPrice,
+            )}dan ${formatPrice(nextCostPrice)}ga o'zgartirildi`,
+            userName: currentUser?.name,
+            userRole: currentUser?.role,
+          });
+        }
 
-    resetForm();
+        if (Number(editingItem.quantity) !== nextQuantity) {
+          addActivityLog({
+            type: "stock",
+            title: "Qoldiq o'zgartirildi",
+            description: `${editingItem.name} qoldig'i ${editingItem.quantity} donadan ${nextQuantity} donaga o'zgartirildi`,
+            userName: currentUser?.name,
+            userRole: currentUser?.role,
+          });
+        }
+
+        setEditModal(false);
+        setEditingItem(null);
+        resetForm();
+      })
+      .catch((error) => {
+        console.error(
+          "Inventory product update error:",
+          error.response?.data || error,
+        );
+        setInventory(inventory, { sync: false });
+        setInventoryError(
+          getApiErrorMessage(error, "Mahsulot qoldig'ini saqlashda xatolik"),
+        );
+      })
+      .finally(() => setSavingInventory(false));
   };
 
   const handleSave = () => {
-    const selectedCategory =
-      formData.category === "Boshqa"
-        ? (formData.customCategory || "").trim()
-        : formData.category;
+    if (savingInventory) return;
+
+    setSavingInventory(true);
+    setInventoryError("");
+
+    const productPayload = buildProductPayload();
+    const selectedCategory = productPayload.category;
 
     saveNewCategory(selectedCategory);
 
-    const cleanSupplierName = formData.supplier.trim();
-    const debtAmount =
-      formData.paymentStatus === "debt" ? normalizedDebtAmount : 0;
+    const cleanSupplierName = productPayload.supplier;
+    const debtAmount = productPayload.debtAmount;
 
     const newItem = {
-      name: formData.name,
-      sku: formData.sku,
-      quantity: Number(formData.quantity),
-      costPrice: Number(formData.costPrice),
-      sellPrice: Number(formData.sellPrice),
-      supplier: cleanSupplierName,
+      ...productPayload,
       id: Date.now(),
-      category: selectedCategory || "Boshqa",
-      returnDays: formData.returnDays,
-      paymentStatus: formData.paymentStatus,
-      debtAmount,
-      supplierPhone: formData.supplierPhone,
-      date: formData.date,
     };
 
-    setInventory([newItem, ...inventory]);
-    notifyStockAlertsForInventoryChange(inventory, [newItem, ...inventory]);
+    setInventory([newItem, ...inventory], { sync: false });
 
-    addActivityLog({
-      type: "inventory",
-      title: "Yangi kirim qilindi",
-      description: `${newItem.name} ${newItem.quantity} dona kirim qilindi`,
-      userName: currentUser?.name,
-      userRole: currentUser?.role,
-    });
+    api
+      .post("/products", newItem)
+      .then(({ data }) => {
+        const { product, supplier } = parseProductSaveResponse(data);
 
-    if (formData.paymentStatus === "debt" && debtAmount > 0) {
-      setSuppliers(
-        upsertSupplierDebt(
-          cleanSupplierName,
-          formData.supplierPhone,
-          debtAmount,
-          newItem,
-        ),
-      );
+        setInventory(
+          (current) =>
+            current.map((item) =>
+              String(item.id) === String(newItem.id) ? product : item,
+            ),
+          { sync: false },
+        );
 
-      addActivityLog({
-        type: "supplier",
-        title: "Supplier qarzi qo'shildi",
-        description: `${cleanSupplierName} supplieriga ${formatPrice(
-          debtAmount,
-        )} qarz qo'shildi`,
-        userName: currentUser?.name,
-        userRole: currentUser?.role,
-      });
-    }
+        if (supplier) {
+          setSuppliers((current) => upsertById(current, supplier));
+        }
 
-    setShowModal(false);
+        addActivityLog({
+          type: "inventory",
+          title: "Yangi kirim qilindi",
+          description: `${newItem.name} ${newItem.quantity} dona kirim qilindi`,
+          userName: currentUser?.name,
+          userRole: currentUser?.role,
+        });
 
-    resetForm();
+        if (isCreditPaymentStatus(formData.paymentStatus) && debtAmount > 0) {
+          addActivityLog({
+            type: "supplier",
+            title: "Supplier qarzi qo'shildi",
+            description: `${cleanSupplierName} supplieriga ${formatPrice(
+              debtAmount,
+            )} qarz qo'shildi`,
+            userName: currentUser?.name,
+            userRole: currentUser?.role,
+          });
+        }
+
+        setShowModal(false);
+        resetForm();
+      })
+      .catch((error) => {
+        console.error(
+          "Inventory product create error:",
+          error.response?.data || error,
+        );
+        setInventory(inventory, { sync: false });
+        setInventoryError(
+          getApiErrorMessage(error, "Mahsulot kirimini saqlashda xatolik"),
+        );
+      })
+      .finally(() => setSavingInventory(false));
   };
 
   const totalProducts = inventory.length;
@@ -370,21 +385,37 @@ function Inventory() {
   );
   const lowStock = inventory.filter((item) => item.quantity < 20).length;
 
-  const handleDelete = (sku) => {
-    const deletedItem = inventory.find((item) => item.sku === sku);
-    const filtered = inventory.filter((item) => item.sku !== sku);
+  const handleDelete = (product) => {
+    if (deletingInventoryId) return;
 
-    setInventory(filtered);
+    const deletedItem = product;
+    const filtered = inventory.filter(
+      (item) => String(item.id) !== String(product.id),
+    );
 
-    if (deletedItem) {
-      addActivityLog({
-        type: "inventory",
-        title: "Mahsulot o'chirildi",
-        description: `${deletedItem.name} ombordan o'chirildi`,
-        userName: currentUser?.name,
-        userRole: currentUser?.role,
-      });
-    }
+    setDeletingInventoryId(product.id);
+    setInventory(filtered, { sync: false });
+
+    api
+      .delete(`/products/${String(product.id)}`)
+      .then(() => {
+        if (deletedItem) {
+          addActivityLog({
+            type: "inventory",
+            title: "Mahsulot o'chirildi",
+            description: `${deletedItem.name} ombordan o'chirildi`,
+            userName: currentUser?.name,
+            userRole: currentUser?.role,
+          });
+        }
+      })
+      .catch((error) => {
+        setInventory(inventory, { sync: false });
+        setInventoryError(
+          getApiErrorMessage(error, "Mahsulotni o'chirishda xatolik"),
+        );
+      })
+      .finally(() => setDeletingInventoryId(null));
   };
 
   return (
@@ -400,6 +431,7 @@ function Inventory() {
           className="inventory-btn"
           onClick={() => {
             setShowModal(true);
+            setInventoryError("");
 
             resetForm();
           }}
@@ -409,6 +441,10 @@ function Inventory() {
           <span>Yangi kirim</span>
         </button>
       </div>
+
+      {inventoryError && !showModal && !editModal && (
+        <div className="form-error">{inventoryError}</div>
+      )}
 
       <div className="inventory-stats">
         <div className="inventory-stat-card">
@@ -490,15 +526,15 @@ function Inventory() {
               <div className="inventory-payment">
                 <span
                   className={`inventory-payment-badge ${
-                    item.paymentStatus === "debt" ? "debt" : "paid"
+                    isCreditPaymentStatus(item.paymentStatus) ? "debt" : "paid"
                   }`}
                 >
-                  {item.paymentStatus === "debt"
+                  {isCreditPaymentStatus(item.paymentStatus)
                     ? "Qarzga olingan"
                     : "To'langan"}
                 </span>
 
-                {item.paymentStatus === "debt" && (
+                {isCreditPaymentStatus(item.paymentStatus) && (
                   <strong>{formatPrice(item.debtAmount || 0)}</strong>
                 )}
               </div>
@@ -514,7 +550,8 @@ function Inventory() {
 
                 <button
                   className="delete-btn"
-                  onClick={() => handleDelete(item.sku)}
+                  disabled={deletingInventoryId === item.id}
+                  onClick={() => handleDelete(item)}
                   type="button"
                 >
                   <FiTrash2 />
@@ -729,7 +766,9 @@ function Inventory() {
                       {paymentOptions.map((option) => (
                         <button
                           className={
-                            formData.paymentStatus === option.value
+                            (option.value === "debt"
+                              ? isCreditPaymentStatus(formData.paymentStatus)
+                              : formData.paymentStatus === option.value)
                               ? "active"
                               : ""
                           }
@@ -752,7 +791,9 @@ function Inventory() {
                           type="button"
                         >
                           <span>{option.label}</span>
-                          {formData.paymentStatus === option.value && (
+                          {(option.value === "debt"
+                            ? isCreditPaymentStatus(formData.paymentStatus)
+                            : formData.paymentStatus === option.value) && (
                             <FiCheck />
                           )}
                         </button>
@@ -761,7 +802,7 @@ function Inventory() {
                   )}
                 </div>
 
-                {formData.paymentStatus === "debt" && (
+                {isCreditPaymentStatus(formData.paymentStatus) && (
                   <>
                     <input
                       type="number"
@@ -791,8 +832,16 @@ function Inventory() {
               </div>
 
               <div className="modal-actions full-width">
-                <button className="save-btn" onClick={handleSave}>
-                  Saqlash
+                {inventoryError && (
+                  <div className="form-error">{inventoryError}</div>
+                )}
+
+                <button
+                  className="save-btn"
+                  disabled={savingInventory}
+                  onClick={handleSave}
+                >
+                  {savingInventory ? "Saqlanmoqda..." : "Saqlash"}
                 </button>
               </div>
             </div>
@@ -884,8 +933,16 @@ function Inventory() {
               </div>
 
               <div className="modal-actions full-width">
-                <button className="save-btn" onClick={handleUpdate}>
-                  Saqlash
+                {inventoryError && (
+                  <div className="form-error">{inventoryError}</div>
+                )}
+
+                <button
+                  className="save-btn"
+                  disabled={savingInventory}
+                  onClick={handleUpdate}
+                >
+                  {savingInventory ? "Saqlanmoqda..." : "Saqlash"}
                 </button>
               </div>
             </div>

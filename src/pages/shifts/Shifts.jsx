@@ -2,31 +2,28 @@ import { useState } from "react";
 
 import { useAuth } from "../../context/AuthContext";
 import { useStore } from "../../context/StoreContext";
-import {
-  notifyShiftClose,
-  notifyShiftOpen,
-} from "../../services/telegramService";
 import { formatPrice } from "../../utils/formatPrice";
+import api from "../../services/api";
+import { getApiErrorMessage } from "../../utils/apiFlow";
 
 import "./shifts.scss";
 
 function Shifts() {
   const { currentUser } = useAuth();
-  const { dailySales } = useStore();
+  const {
+    dailySales,
+    activeShift,
+    setActiveShift,
+    shiftHistory,
+    setShiftHistory,
+  } = useStore();
 
   const [cashierName, setCashierName] = useState(currentUser?.name || "");
   const [openingCash, setOpeningCash] = useState("");
   const [closingCash, setClosingCash] = useState("");
-
-  const [activeShift, setActiveShift] = useState(() => {
-    const saved = localStorage.getItem("techpro_active_shift");
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [shiftHistory, setShiftHistory] = useState(() => {
-    const saved = localStorage.getItem("techpro_shift_history");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [openingShift, setOpeningShift] = useState(false);
+  const [closingShift, setClosingShift] = useState(false);
+  const [shiftError, setShiftError] = useState("");
 
   const todaySales = dailySales.reduce(
     (acc, sale) => acc + Number(sale.total || 0),
@@ -46,12 +43,15 @@ function Shifts() {
     .reduce((acc, sale) => acc + Number(sale.total || 0), 0);
 
   const openShift = () => {
-    if (!cashierName || !openingCash) return;
+    if (openingShift || !cashierName || !openingCash) return;
 
-    const newShift = {
+    setOpeningShift(true);
+    setShiftError("");
+
+    const optimisticShift = {
       id: crypto.randomUUID(),
       cashierName,
-      openedBy: currentUser?.name,
+      openedByName: currentUser?.name,
       openingCash: Number(openingCash),
       openedAt: new Date().toLocaleTimeString("uz-UZ", {
         hour: "2-digit",
@@ -62,14 +62,27 @@ function Shifts() {
       status: "open",
     };
 
-    localStorage.setItem("techpro_active_shift", JSON.stringify(newShift));
-    setActiveShift(newShift);
+    setActiveShift(optimisticShift);
     setOpeningCash("");
-    void notifyShiftOpen(newShift);
+
+    api
+      .post("/shifts/open", {
+        cashierName,
+        openingCash: Number(openingCash),
+      })
+      .then(({ data }) => setActiveShift(data))
+      .catch((error) => {
+        setActiveShift(null);
+        setShiftError(getApiErrorMessage(error, "Shift ochishda xatolik"));
+      })
+      .finally(() => setOpeningShift(false));
   };
 
   const closeShift = () => {
-    if (!activeShift || !closingCash) return;
+    if (closingShift || !activeShift || !closingCash) return;
+
+    setClosingShift(true);
+    setShiftError("");
 
     const openedDate = activeShift.openedAtISO
       ? new Date(activeShift.openedAtISO)
@@ -107,18 +120,27 @@ function Shifts() {
         (Number(activeShift.openingCash || 0) + cashSales),
     };
 
-    const updatedHistory = [closedShift, ...shiftHistory];
-
-    localStorage.setItem(
-      "techpro_shift_history",
-      JSON.stringify(updatedHistory),
-    );
-    localStorage.removeItem("techpro_active_shift");
-
-    setShiftHistory(updatedHistory);
+    setShiftHistory([closedShift, ...shiftHistory]);
     setActiveShift(null);
     setClosingCash("");
-    void notifyShiftClose(closedShift);
+
+    api
+      .post(`/shifts/${activeShift.id}/close`, {
+        closingCash: Number(closingCash),
+      })
+      .then(({ data }) => {
+        setShiftHistory((history) =>
+          history.map((shift) => (shift.id === closedShift.id ? data : shift)),
+        );
+      })
+      .catch((error) => {
+        setShiftHistory((history) =>
+          history.filter((shift) => shift.id !== closedShift.id),
+        );
+        setActiveShift(activeShift);
+        setShiftError(getApiErrorMessage(error, "Shift yopishda xatolik"));
+      })
+      .finally(() => setClosingShift(false));
   };
 
   return (
@@ -135,6 +157,8 @@ function Shifts() {
       </div>
 
       <div className="shift-summary">
+        {shiftError && <div className="form-error">{shiftError}</div>}
+
         <div className="shift-card">
           <span>Bugungi savdo</span>
           <h2>{formatPrice(todaySales)}</h2>
@@ -175,7 +199,9 @@ function Shifts() {
               onChange={(e) => setOpeningCash(e.target.value)}
             />
 
-            <button onClick={openShift}>Shiftni ochish</button>
+            <button disabled={openingShift} onClick={openShift}>
+              {openingShift ? "Saqlanmoqda..." : "Shiftni ochish"}
+            </button>
           </div>
         </div>
       ) : (
@@ -207,7 +233,9 @@ function Shifts() {
               onChange={(e) => setClosingCash(e.target.value)}
             />
 
-            <button onClick={closeShift}>Shiftni yopish</button>
+            <button disabled={closingShift} onClick={closeShift}>
+              {closingShift ? "Saqlanmoqda..." : "Shiftni yopish"}
+            </button>
           </div>
         </div>
       )}

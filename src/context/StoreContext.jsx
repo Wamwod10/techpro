@@ -1,147 +1,179 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import api from "../services/api";
 import { normalizeSaleReturns } from "../utils/returns";
 
 const StoreContext = createContext();
 
+const normalizeHistory = (history = []) =>
+  history.map((day) => ({
+    ...day,
+    returnedTotal: Number(day.returnedTotal || 0),
+    sales: (day.sales || []).map(normalizeSaleReturns),
+  }));
+
 export const StoreProvider = ({ children }) => {
-  const [inventory, setInventory] = useState(() => {
-    const saved = localStorage.getItem("techpro_inventory");
+  const [inventory, setInventoryState] = useState([]);
+  const [dailySales, setDailySalesState] = useState([]);
+  const [salesHistory, setSalesHistoryState] = useState([]);
+  const [suppliers, setSuppliersState] = useState([]);
+  const [expenses, setExpensesState] = useState([]);
+  const [returns, setReturnsState] = useState([]);
+  const [activeShift, setActiveShift] = useState(null);
+  const [shiftHistory, setShiftHistory] = useState([]);
+  const [activityLogs, setActivityLogsState] = useState([]);
+  const [telegramSettings, setTelegramSettingsState] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 1,
-            sku: "TP-4821",
-            name: "iPhone 15 Pro Case",
-            category: "Chexol",
-            quantity: 50,
-            costPrice: 70000,
-            sellPrice: 120000,
-            supplier: "Mobile Market",
-          },
-          {
-            id: 2,
-            sku: "TP-1934",
-            name: "AirPods Pro Case",
-            category: "AirPods",
-            quantity: 35,
-            costPrice: 45000,
-            sellPrice: 85000,
-            supplier: "iStore",
-          },
-        ];
-  });
+  const loadStore = useCallback(async () => {
+    if (!localStorage.getItem("techpro_token")) return;
 
-  const [dailySales, setDailySales] = useState(() => {
-    const saved = localStorage.getItem("techpro_daily_sales");
+    setLoading(true);
+    setError("");
 
-    return saved ? JSON.parse(saved).map(normalizeSaleReturns) : [];
-  });
+    try {
+      const { data } = await api.get("/bootstrap");
 
-  const [salesHistory, setSalesHistory] = useState(() => {
-    const saved = localStorage.getItem("techpro_sales_history");
+      setInventoryState(data.inventory || []);
+      setDailySalesState((data.dailySales || []).map(normalizeSaleReturns));
+      setSalesHistoryState(normalizeHistory(data.salesHistory || []));
+      setSuppliersState(data.suppliers || []);
+      setExpensesState(data.expenses || []);
+      setReturnsState(data.returns || []);
+      setActiveShift(data.activeShift || null);
+      setShiftHistory(data.shiftHistory || []);
+      setActivityLogsState(data.activityLogs || []);
+      setTelegramSettingsState(data.telegramSettings || null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Serverdan ma'lumot olishda xatolik");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    return saved
-      ? JSON.parse(saved).map((day) => ({
-          ...day,
-          returnedTotal: Number(day.returnedTotal || 0),
-          sales: (day.sales || []).map(normalizeSaleReturns),
-        }))
-      : [];
-  });
+  useEffect(() => {
+    loadStore();
+  }, [loadStore]);
 
-  const [suppliers, setSuppliers] = useState(() => {
-    const saved = localStorage.getItem("techpro_suppliers");
+  const setInventory = (updater) => {
+    setInventoryState((previous) => {
+      const next =
+        typeof updater === "function" ? updater(previous) : updater || [];
 
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 1,
-            name: "Mobile Market",
-            debt: 4500000,
-            transactions: [],
-          },
-          {
-            id: 2,
-            name: "iStore",
-            debt: 2800000,
-            transactions: [],
-          },
-        ];
-  });
+      return next;
+    });
+  };
 
-  const [activityLogs, setActivityLogs] = useState(() => {
-    const saved = localStorage.getItem("techpro_activity_logs");
+  const setDailySales = (updater) => {
+    setDailySalesState((previous) =>
+      typeof updater === "function" ? updater(previous) : updater || [],
+    );
+  };
 
-    return saved ? JSON.parse(saved) : [];
-  });
+  const setSalesHistory = (updater) => {
+    setSalesHistoryState((previous) =>
+      normalizeHistory(
+        typeof updater === "function" ? updater(previous) : updater || [],
+      ),
+    );
+  };
 
-  const addActivityLog = (log) => {
-    const now = new Date();
+  const setSuppliers = (updater) => {
+    setSuppliersState((previous) =>
+      typeof updater === "function" ? updater(previous) : updater || [],
+    );
+  };
 
-    const newLog = {
+  const setActivityLogs = (updater) => {
+    setActivityLogsState((previous) =>
+      typeof updater === "function" ? updater(previous) : updater || [],
+    );
+  };
+
+  const addActivityLog = async (log) => {
+    const fallbackLog = {
       id: crypto.randomUUID(),
       type: log.type || "general",
       title: log.title || "Amal bajarildi",
       description: log.description || "",
       userName: log.userName || "Noma'lum foydalanuvchi",
       userRole: log.userRole || "unknown",
-      date: now.toLocaleDateString("uz-UZ"),
-      time: now.toLocaleTimeString("uz-UZ", {
+      date: new Date().toLocaleDateString("uz-UZ"),
+      time: new Date().toLocaleTimeString("uz-UZ", {
         hour: "2-digit",
         minute: "2-digit",
       }),
-      createdAt: now.toISOString(),
+      createdAt: new Date().toISOString(),
     };
 
-    setActivityLogs((prevLogs) => [newLog, ...prevLogs].slice(0, 500));
+    setActivityLogsState((prevLogs) => [fallbackLog, ...prevLogs].slice(0, 500));
+
+    try {
+      const { data } = await api.post("/activity-logs", log);
+      setActivityLogsState((prevLogs) =>
+        [data, ...prevLogs.filter((item) => item.id !== fallbackLog.id)].slice(
+          0,
+          500,
+        ),
+      );
+    } catch {
+      // Optimistic log remains visible if the network is temporarily unavailable.
+    }
   };
 
-  useEffect(() => {
-    localStorage.setItem("techpro_inventory", JSON.stringify(inventory));
-  }, [inventory]);
-
-  useEffect(() => {
-    localStorage.setItem("techpro_daily_sales", JSON.stringify(dailySales));
-  }, [dailySales]);
-
-  useEffect(() => {
-    localStorage.setItem("techpro_sales_history", JSON.stringify(salesHistory));
-  }, [salesHistory]);
-
-  useEffect(() => {
-    localStorage.setItem("techpro_suppliers", JSON.stringify(suppliers));
-  }, [suppliers]);
-
-  useEffect(() => {
-    localStorage.setItem(
-      "techpro_activity_logs",
-      JSON.stringify(activityLogs),
-    );
-  }, [activityLogs]);
+  const value = useMemo(
+    () => ({
+      inventory,
+      setInventory,
+      dailySales,
+      setDailySales,
+      salesHistory,
+      setSalesHistory,
+      suppliers,
+      setSuppliers,
+      expenses,
+      setExpenses: setExpensesState,
+      returns,
+      setReturns: setReturnsState,
+      activeShift,
+      setActiveShift,
+      shiftHistory,
+      setShiftHistory,
+      telegramSettings,
+      setTelegramSettings: setTelegramSettingsState,
+      activityLogs,
+      setActivityLogs,
+      addActivityLog,
+      loading,
+      error,
+      reloadStore: loadStore,
+    }),
+    [
+      inventory,
+      dailySales,
+      salesHistory,
+      suppliers,
+      expenses,
+      returns,
+      activeShift,
+      shiftHistory,
+      telegramSettings,
+      activityLogs,
+      loading,
+      error,
+      loadStore,
+    ],
+  );
 
   return (
-    <StoreContext.Provider
-      value={{
-        inventory,
-        setInventory,
-
-        dailySales,
-        setDailySales,
-
-        salesHistory,
-        setSalesHistory,
-
-        suppliers,
-        setSuppliers,
-
-        activityLogs,
-        setActivityLogs,
-        addActivityLog,
-      }}
-    >
+    <StoreContext.Provider value={value}>
       {children}
     </StoreContext.Provider>
   );

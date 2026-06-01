@@ -28,7 +28,7 @@ import {
 import "./mainlayout.scss";
 
 function MainLayout() {
-  const { inventory } = useStore();
+  const { inventory, loading, error } = useStore();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [headerSearch, setHeaderSearch] = useState("");
@@ -349,6 +349,8 @@ function MainLayout() {
         </header>
 
         <div className="content">
+          {loading && <div className="page-state-banner">Yuklanmoqda...</div>}
+          {error && <div className="page-state-banner error">{error}</div>}
           <Outlet />
         </div>
       </div>
