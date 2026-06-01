@@ -3,8 +3,8 @@ import axios from "axios";
 const localApiUrl = "http://localhost:5000/api";
 const productionApiUrl = "https://techpro-backend.onrender.com/api";
 
-export const API_TIMEOUT = 8000;
-export const LOGIN_TIMEOUT = 6000;
+export const API_TIMEOUT = 15000;
+export const LOGIN_TIMEOUT = 20000;
 
 const api = axios.create({
   baseURL:

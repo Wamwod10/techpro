@@ -45,9 +45,33 @@ function MainLayout() {
   }, [isDarkMode, theme]);
 
   useEffect(() => {
-    document.body.classList.toggle("sidebar-open", isSidebarOpen);
+    if (!isSidebarOpen) {
+      document.body.classList.remove("sidebar-open");
+      return undefined;
+    }
 
-    return () => document.body.classList.remove("sidebar-open");
+    const scrollY = window.scrollY;
+
+    document.body.dataset.sidebarScrollY = String(scrollY);
+    document.body.classList.add("sidebar-open");
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+
+    return () => {
+      const savedScrollY = Number(document.body.dataset.sidebarScrollY || 0);
+
+      document.body.classList.remove("sidebar-open");
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      delete document.body.dataset.sidebarScrollY;
+      window.scrollTo(0, savedScrollY);
+    };
   }, [isSidebarOpen]);
 
   const searchResults = inventory
