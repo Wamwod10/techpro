@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import api from "../services/api";
+import { useAuth } from "./AuthContext";
 import { normalizeSaleReturns } from "../utils/returns";
 
 const StoreContext = createContext();
@@ -18,7 +19,17 @@ const normalizeHistory = (history = []) =>
     sales: (day.sales || []).map(normalizeSaleReturns),
   }));
 
+const normalizeInventory = (items = []) =>
+  items
+    .filter((item) => !item?.isDeleted)
+    .map((item) => ({
+      ...item,
+      quantity: Number(item.quantity ?? item.stock ?? 0),
+      sellPrice: Number(item.sellPrice ?? item.price ?? 0),
+    }));
+
 export const StoreProvider = ({ children }) => {
+  const { currentUser } = useAuth();
   const [inventory, setInventoryState] = useState([]);
   const [dailySales, setDailySalesState] = useState([]);
   const [salesHistory, setSalesHistoryState] = useState([]);
@@ -33,15 +44,17 @@ export const StoreProvider = ({ children }) => {
   const [error, setError] = useState("");
 
   const loadStore = useCallback(async () => {
-    if (!localStorage.getItem("techpro_token")) return;
+    if (!localStorage.getItem("techpro_token") || !currentUser) return;
 
     setLoading(true);
     setError("");
 
     try {
-      const { data } = await api.get("/bootstrap");
+      const { data } = await api.get("/bootstrap", {
+        params: { includeHistory: false },
+      });
 
-      setInventoryState(data.inventory || []);
+      setInventoryState(normalizeInventory(data.inventory || []));
       setDailySalesState((data.dailySales || []).map(normalizeSaleReturns));
       setSalesHistoryState(normalizeHistory(data.salesHistory || []));
       setSuppliersState(data.suppliers || []);
@@ -51,23 +64,48 @@ export const StoreProvider = ({ children }) => {
       setShiftHistory(data.shiftHistory || []);
       setActivityLogsState(data.activityLogs || []);
       setTelegramSettingsState(data.telegramSettings || null);
+
+      void api
+        .get("/sales/history")
+        .then(({ data: history }) => {
+          setSalesHistoryState(normalizeHistory(history || []));
+        })
+        .catch(() => {
+          // Core store data is already usable; history can be retried manually.
+        });
     } catch (err) {
       setError(err.response?.data?.message || "Serverdan ma'lumot olishda xatolik");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
+    if (!currentUser) {
+      setInventoryState([]);
+      setDailySalesState([]);
+      setSalesHistoryState([]);
+      setSuppliersState([]);
+      setExpensesState([]);
+      setReturnsState([]);
+      setActiveShift(null);
+      setShiftHistory([]);
+      setActivityLogsState([]);
+      setTelegramSettingsState(null);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     loadStore();
-  }, [loadStore]);
+  }, [currentUser, loadStore]);
 
   const setInventory = (updater) => {
     setInventoryState((previous) => {
       const next =
         typeof updater === "function" ? updater(previous) : updater || [];
 
-      return next;
+      return normalizeInventory(next);
     });
   };
 

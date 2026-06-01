@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   RETURN_REASONS,
   applyReturnToSales,
+  buildReturnRecord,
   getAvailableReturnQty,
   getSaleNetTotal,
   getSalesNetTotal,
@@ -26,6 +27,8 @@ function Sales() {
     setDailySales,
     salesHistory,
     setSalesHistory,
+    returns,
+    setReturns,
     activeShift,
     addActivityLog,
   } = useStore();
@@ -121,8 +124,8 @@ function Sales() {
 
   const filteredProducts = inventory.filter(
     (product) =>
-      product.name.toLowerCase().includes(search.toLowerCase()) ||
-      product.sku.toLowerCase().includes(search.toLowerCase()),
+      String(product.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      String(product.sku || "").toLowerCase().includes(search.toLowerCase()),
   );
 
   const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
@@ -259,9 +262,18 @@ function Sales() {
       selectedReturnItem.productId || selectedReturnItem.id,
       returnResult.quantity,
     );
+    const optimisticReturn = buildReturnRecord({
+      sale: selectedSale,
+      item: returnResult.returnedItem,
+      quantity: returnResult.quantity,
+      amount: returnResult.amount,
+      reason: returnReason,
+      seller: currentUser,
+    });
 
     setInventory(nextInventory, { sync: false });
     setDailySales(returnResult.sales);
+    setReturns([optimisticReturn, ...returns]);
 
     api
       .post("/returns", {
@@ -270,9 +282,17 @@ function Sales() {
         quantity: returnResult.quantity,
         reason: returnReason,
       })
+      .then(({ data }) => {
+        setReturns((current) =>
+          current.map((item) =>
+            item.id === optimisticReturn.id ? data : item,
+          ),
+        );
+      })
       .catch((error) => {
         setInventory(inventory, { sync: false });
         setDailySales(dailySales);
+        setReturns(returns);
         setSalesError(
           getApiErrorMessage(error, "Vozvratni saqlashda xatolik"),
         );

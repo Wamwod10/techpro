@@ -301,8 +301,8 @@ function Products() {
   const filteredProducts = inventory
     .filter((product) => {
       const matchesSearch =
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.sku.toLowerCase().includes(search.toLowerCase());
+        String(product.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        String(product.sku || "").toLowerCase().includes(search.toLowerCase());
 
       const status = getStatus(Number(product.quantity)).className;
 

@@ -88,6 +88,17 @@ function Expenses() {
     setSavingExpense(true);
     setExpenseError("");
 
+    const optimisticExpense = {
+      id: crypto.randomUUID(),
+      title: formData.title,
+      category: formData.category || "Boshqa",
+      amount: Number(formData.amount),
+      note: formData.note,
+      date: new Date().toLocaleDateString("uz-UZ"),
+    };
+
+    setExpenses([optimisticExpense, ...expenses]);
+
     try {
       const { data: newExpense } = await api.post("/expenses", {
         title: formData.title,
@@ -96,7 +107,11 @@ function Expenses() {
         note: formData.note,
       });
 
-      setExpenses([newExpense, ...expenses]);
+      setExpenses((current) =>
+        current.map((item) =>
+          item.id === optimisticExpense.id ? newExpense : item,
+        ),
+      );
 
       setFormData({
         title: "",
@@ -107,6 +122,7 @@ function Expenses() {
 
       setShowModal(false);
     } catch (error) {
+      setExpenses(expenses);
       setExpenseError(getApiErrorMessage(error, "Xarajat saqlashda xatolik"));
     } finally {
       setSavingExpense(false);

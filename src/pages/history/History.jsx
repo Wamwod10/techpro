@@ -12,6 +12,7 @@ import { getApiErrorMessage } from "../../utils/apiFlow";
 import {
   RETURN_REASONS,
   applyReturnToHistory,
+  buildReturnRecord,
   getDayNetTotal,
   getAvailableReturnQty,
   getSaleNetTotal,
@@ -326,6 +327,24 @@ function History() {
       return;
     }
 
+    const optimisticReturn = buildReturnRecord({
+      sale: selectedSale,
+      item: returnResult.returnedItem,
+      quantity: returnResult.quantity,
+      amount: returnResult.amount,
+      reason: returnReason,
+      seller: currentUser,
+    });
+    const nextInventory = increaseInventoryQuantity(
+      inventory,
+      selectedReturnItem.productId || selectedReturnItem.id,
+      returnResult.quantity,
+    );
+
+    setReturns([optimisticReturn, ...returns]);
+    setInventory(nextInventory);
+    setSalesHistory(returnResult.history);
+
     try {
       const { data } = await api.post("/returns", {
         saleId: selectedSale.id,
@@ -333,8 +352,13 @@ function History() {
         quantity: returnResult.quantity,
         reason: returnReason,
       });
-      setReturns([data, ...returns]);
+      setReturns((current) =>
+        current.map((item) => (item.id === optimisticReturn.id ? data : item)),
+      );
     } catch (error) {
+      setReturns(returns);
+      setInventory(inventory);
+      setSalesHistory(salesHistory);
       setHistoryError(
         getApiErrorMessage(error, "Vozvratni saqlashda xatolik"),
       );
@@ -343,15 +367,6 @@ function History() {
     } finally {
       setReturnSaving(false);
     }
-
-    setInventory(
-      increaseInventoryQuantity(
-        inventory,
-        selectedReturnItem.productId || selectedReturnItem.id,
-        returnResult.quantity,
-      ),
-    );
-    setSalesHistory(returnResult.history);
 
     addActivityLog({
       type: "return",

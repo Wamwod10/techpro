@@ -55,8 +55,8 @@ function MainLayout() {
       const value = headerSearch.toLowerCase();
 
       return (
-        product.name.toLowerCase().includes(value) ||
-        product.sku.toLowerCase().includes(value)
+        String(product.name || "").toLowerCase().includes(value) ||
+        String(product.sku || "").toLowerCase().includes(value)
       );
     })
     .slice(0, 5);

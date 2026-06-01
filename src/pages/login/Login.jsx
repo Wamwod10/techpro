@@ -17,14 +17,21 @@ function Login() {
   });
 
   const [error, setError] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (loggingIn) return;
+
+    setLoggingIn(true);
+    setError("");
 
     const result = await login(formData.username, formData.password);
 
     if (!result.success) {
       setError(result.message);
+      setLoggingIn(false);
       return;
     }
 
@@ -47,6 +54,7 @@ function Login() {
             <input
               type="text"
               placeholder="Login"
+              disabled={loggingIn}
               value={formData.username}
               onChange={(e) =>
                 setFormData({
@@ -63,6 +71,7 @@ function Login() {
             <input
               type="password"
               placeholder="Parol"
+              disabled={loggingIn}
               value={formData.password}
               onChange={(e) =>
                 setFormData({
@@ -73,7 +82,9 @@ function Login() {
             />
           </div>
 
-          <button type="submit">Kirish</button>
+          <button disabled={loggingIn} type="submit">
+            {loggingIn ? "Kirilmoqda..." : "Kirish"}
+          </button>
         </form>
 
         <div className="login-hint">

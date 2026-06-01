@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "../services/api";
+import api, { LOGIN_TIMEOUT } from "../services/api";
+import { getApiErrorMessage } from "../utils/apiFlow";
 
 const AuthContext = createContext();
 const allowedLocalStorageKeys = new Set(["techpro_token", "techpro_theme"]);
@@ -27,7 +28,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     api
-      .get("/auth/me")
+      .get("/auth/me", { timeout: LOGIN_TIMEOUT })
       .then(({ data }) => setCurrentUser(data))
       .catch(() => {
         localStorage.removeItem("techpro_token");
@@ -38,7 +39,11 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const { data } = await api.post("/auth/login", { username, password });
+      const { data } = await api.post(
+        "/auth/login",
+        { username, password },
+        { timeout: LOGIN_TIMEOUT },
+      );
 
       localStorage.setItem("techpro_token", data.token);
 
@@ -51,7 +56,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.message || "Login yoki parol noto'g'ri",
+        message: getApiErrorMessage(error, "Login yoki parol noto'g'ri"),
       };
     }
   };

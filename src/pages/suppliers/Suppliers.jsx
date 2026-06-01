@@ -99,6 +99,15 @@ function Suppliers() {
           : item,
       ),
     );
+    setSelectedSupplier((supplier) =>
+      supplier
+        ? {
+            ...supplier,
+            paid: Number(supplier.paid || 0) + Number(paymentAmount),
+            transactions: [transaction, ...(supplier.transactions || [])],
+          }
+        : supplier,
+    );
 
     api
       .post(`/suppliers/${selectedSupplier.id}/payments`, {
@@ -107,29 +116,32 @@ function Suppliers() {
         time: transaction.time,
       })
       .then(({ data }) => {
+        const nextSupplier = {
+          ...data.supplier,
+          transactions:
+            data.supplier?.transactions || [
+              data.transaction,
+              ...(selectedSupplier.transactions || []).filter(
+                (entry) => entry.id !== transaction.id,
+              ),
+            ],
+        };
+
         setSuppliers((current) =>
           current.map((item) =>
             item.id === selectedSupplier.id
-              ? {
-                  ...item,
-                  ...data.supplier,
-                  transactions:
-                    data.supplier?.transactions || [
-                      data.transaction,
-                      ...(item.transactions || []).filter(
-                        (entry) => entry.id !== transaction.id,
-                      ),
-                    ],
-                }
+              ? nextSupplier
               : item,
           ),
         );
+        setSelectedSupplier(nextSupplier);
 
         setPaymentAmount("");
         setShowModal(false);
       })
       .catch((error) => {
         setSuppliers(suppliers);
+        setSelectedSupplier(selectedSupplier);
         setPaymentError(
           getApiErrorMessage(error, "Supplier to'lovini saqlashda xatolik"),
         );
