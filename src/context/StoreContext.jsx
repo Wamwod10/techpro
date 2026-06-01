@@ -44,7 +44,7 @@ export const StoreProvider = ({ children }) => {
   const [error, setError] = useState("");
 
   const loadStore = useCallback(async () => {
-    if (!localStorage.getItem("techpro_token") || !currentUser) return;
+    if (!currentUser) return;
 
     setLoading(true);
     setError("");

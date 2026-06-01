@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api, { LOGIN_TIMEOUT } from "../services/api";
-import { getApiErrorMessage } from "../utils/apiFlow";
+import { LOCAL_USERS, toSessionUser } from "../config/localUsers";
 
 const AuthContext = createContext();
-const allowedLocalStorageKeys = new Set(["techpro_token", "techpro_theme"]);
+const USER_STORAGE_KEY = "techpro_user";
+const allowedLocalStorageKeys = new Set([USER_STORAGE_KEY, "techpro_theme"]);
 
 const cleanupLegacyLocalStorage = () => {
   Object.keys(localStorage).forEach((key) => {
@@ -20,49 +20,42 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     cleanupLegacyLocalStorage();
 
-    const token = localStorage.getItem("techpro_token");
-
-    if (!token) {
+    try {
+      const savedUser = JSON.parse(localStorage.getItem(USER_STORAGE_KEY));
+      setCurrentUser(savedUser || null);
+    } catch {
+      localStorage.removeItem(USER_STORAGE_KEY);
+      setCurrentUser(null);
+    } finally {
       setAuthLoading(false);
-      return;
     }
-
-    api
-      .get("/auth/me", { timeout: LOGIN_TIMEOUT })
-      .then(({ data }) => setCurrentUser(data))
-      .catch(() => {
-        localStorage.removeItem("techpro_token");
-        setCurrentUser(null);
-      })
-      .finally(() => setAuthLoading(false));
   }, []);
 
-  const login = async (username, password) => {
-    try {
-      const { data } = await api.post(
-        "/auth/login",
-        { username, password },
-        { timeout: LOGIN_TIMEOUT },
-      );
+  const login = (username, password) => {
+    const cleanUsername = username.trim();
+    const user = LOCAL_USERS.find(
+      (item) => item.username === cleanUsername && item.password === password,
+    );
 
-      localStorage.setItem("techpro_token", data.token);
-
-      setCurrentUser(data.user);
-
-      return {
-        success: true,
-        user: data.user,
-      };
-    } catch (error) {
+    if (!user) {
       return {
         success: false,
-        message: getApiErrorMessage(error, "Login yoki parol noto'g'ri"),
+        message: "Login yoki parol noto'g'ri",
       };
     }
+
+    const sessionUser = toSessionUser(user);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(sessionUser));
+    setCurrentUser(sessionUser);
+
+    return {
+      success: true,
+      user: sessionUser,
+    };
   };
 
   const logout = () => {
-    localStorage.removeItem("techpro_token");
+    localStorage.removeItem(USER_STORAGE_KEY);
 
     setCurrentUser(null);
   };

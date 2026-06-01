@@ -11,6 +11,8 @@ import {
 
 import "./sellerAnalytics.scss";
 
+const getSellerKey = (sale) => sale.sellerName || sale.sellerId || "";
+
 function SellerAnalytics() {
   const { currentUser } = useAuth();
   const { dailySales, salesHistory } = useStore();
@@ -29,11 +31,11 @@ function SellerAnalytics() {
     () => [
       ...new Map(
         allSales
-          .filter((sale) => sale.sellerId)
+          .filter((sale) => getSellerKey(sale))
           .map((sale) => [
-            sale.sellerId,
+            getSellerKey(sale),
             {
-              id: sale.sellerId,
+              id: getSellerKey(sale),
               name: sale.sellerName,
               role: sale.sellerRole,
             },
@@ -44,7 +46,7 @@ function SellerAnalytics() {
   );
 
   const [selectedSellerId, setSelectedSellerId] = useState(
-    isAdmin ? sellers[0]?.id || "" : currentUser?.id,
+    isAdmin ? sellers[0]?.id || "" : currentUser?.name,
   );
 
   useEffect(() => {
@@ -53,10 +55,10 @@ function SellerAnalytics() {
     }
   }, [isAdmin, selectedSellerId, sellers]);
 
-  const activeSellerId = isAdmin ? selectedSellerId : currentUser?.id;
+  const activeSellerId = isAdmin ? selectedSellerId : currentUser?.name;
 
   const sellerSales = allSales.filter(
-    (sale) => sale.sellerId === activeSellerId,
+    (sale) => getSellerKey(sale) === activeSellerId,
   );
 
   const totalSales = sellerSales.reduce(

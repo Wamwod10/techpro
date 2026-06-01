@@ -4,7 +4,6 @@ const localApiUrl = "http://localhost:5000/api";
 const productionApiUrl = "https://techpro-backend.onrender.com/api";
 
 export const API_TIMEOUT = 15000;
-export const LOGIN_TIMEOUT = 20000;
 
 const api = axios.create({
   baseURL:
@@ -14,10 +13,20 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("techpro_token");
+  const savedUser = localStorage.getItem("techpro_user");
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (savedUser) {
+    try {
+      const user = JSON.parse(savedUser);
+
+      if (user?.name) config.headers["x-techpro-user-name"] = user.name;
+      if (user?.role) config.headers["x-techpro-user-role"] = user.role;
+      if (user?.username) {
+        config.headers["x-techpro-username"] = user.username;
+      }
+    } catch {
+      localStorage.removeItem("techpro_user");
+    }
   }
 
   return config;
@@ -26,10 +35,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("techpro_token");
-    }
-
     return Promise.reject(error);
   },
 );
