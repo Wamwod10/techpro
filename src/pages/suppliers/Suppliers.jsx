@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiDollarSign, FiTrash2, FiTruck } from "react-icons/fi";
+import { FiDollarSign, FiEdit2, FiTrash2, FiTruck, FiX } from "react-icons/fi";
 
 import { useAuth } from "../../context/AuthContext";
 import { useStore } from "../../context/StoreContext";
@@ -22,14 +22,31 @@ function Suppliers() {
   const [supplierPhone, setSupplierPhone] = useState("");
   const [supplierTelegram, setSupplierTelegram] = useState("");
   const [supplierDeadline, setSupplierDeadline] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    deadline: "",
+    debt: "",
+    paid: "",
+    notes: "",
+  });
   const [savingPayment, setSavingPayment] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [deletingSupplierId, setDeletingSupplierId] = useState(null);
   const [supplierError, setSupplierError] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [editError, setEditError] = useState("");
+
+  const isAdmin = currentUser?.role === "admin";
 
   const selectedSupplierBalance = selectedSupplier
-    ? Number(selectedSupplier.debt || 0) - Number(selectedSupplier.paid || 0)
+    ? Math.max(
+        0,
+        Number(selectedSupplier.debt || 0) - Number(selectedSupplier.paid || 0),
+      )
     : 0;
   const paymentValue = Number(paymentAmount);
   const isPaymentInvalid =
@@ -37,6 +54,10 @@ function Suppliers() {
     !paymentAmount ||
     paymentValue <= 0 ||
     paymentValue > selectedSupplierBalance;
+  const editBalance = Math.max(
+    0,
+    Number(editForm.debt || 0) - Number(editForm.paid || 0),
+  );
 
   const getSupplierStatus = (supplier, balance) => {
     if (balance <= 0) {
@@ -69,6 +90,106 @@ function Suppliers() {
         );
       })
       .finally(() => setDeletingSupplierId(null));
+  };
+
+  const openEditModal = (supplier) => {
+    setEditingSupplier(supplier);
+    setEditForm({
+      name: supplier.name || "",
+      phone: supplier.phone || "",
+      deadline: supplier.deadline || "",
+      debt: String(supplier.debt ?? 0),
+      paid: String(supplier.paid ?? 0),
+      notes: supplier.notes || "",
+    });
+    setEditError("");
+    setSupplierError("");
+    setShowEditModal(true);
+  };
+
+  const updateEditField = (field, value) => {
+    if (["debt", "paid"].includes(field) && Number(value) < 0) return;
+
+    setEditForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleUpdateSupplier = () => {
+    if (savingEdit || !editingSupplier) return;
+
+    const payload = {
+      name: editForm.name.trim(),
+      phone: editForm.phone.trim() || null,
+      date: editForm.deadline || null,
+      totalDebt: Number(editForm.debt || 0),
+      paidAmount: Number(editForm.paid || 0),
+      notes: editForm.notes.trim() || null,
+    };
+
+    if (!payload.name) {
+      setEditError("Supplier nomi bo'sh bo'lmasin");
+      return;
+    }
+
+    if (
+      Number.isNaN(payload.totalDebt) ||
+      Number.isNaN(payload.paidAmount) ||
+      payload.totalDebt < 0 ||
+      payload.paidAmount < 0
+    ) {
+      setEditError("Summalar manfiy bo'lishi mumkin emas");
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError("");
+
+    const nextSupplier = {
+      ...editingSupplier,
+      name: payload.name,
+      phone: payload.phone,
+      deadline: payload.date,
+      debt: payload.totalDebt,
+      paid: payload.paidAmount,
+      notes: payload.notes,
+    };
+
+    setSuppliers((current) =>
+      current.map((item) =>
+        item.id === editingSupplier.id ? nextSupplier : item,
+      ),
+    );
+
+    api
+      .put(`/suppliers/${editingSupplier.id}`, payload)
+      .then(({ data }) => {
+        setSuppliers((current) =>
+          current.map((item) =>
+            item.id === editingSupplier.id ? data : item,
+          ),
+        );
+        setSelectedSupplier((current) =>
+          current?.id === editingSupplier.id ? data : current,
+        );
+        void addActivityLog({
+          type: "supplier",
+          title: "Ta’minotchi ma’lumotlari o‘zgartirildi",
+          description: data.name,
+          userName: currentUser?.name,
+          userRole: currentUser?.role,
+        });
+        setShowEditModal(false);
+        setEditingSupplier(null);
+      })
+      .catch((error) => {
+        setSuppliers(suppliers);
+        setEditError(
+          getApiErrorMessage(error, "Supplier tahrirlashda xatolik"),
+        );
+      })
+      .finally(() => setSavingEdit(false));
   };
 
   const handleSupplierPayment = () => {
@@ -234,14 +355,16 @@ function Suppliers() {
         </button>
       </div>
 
-      {supplierError && !showAddModal && (
+      {supplierError && !showAddModal && !showEditModal && (
         <div className="form-error">{supplierError}</div>
       )}
 
       <div className="suppliers-grid">
         {suppliers.map((supplier) => {
-          const balance =
-            Number(supplier.debt || 0) - Number(supplier.paid || 0);
+          const balance = Math.max(
+            0,
+            Number(supplier.debt || 0) - Number(supplier.paid || 0),
+          );
           const supplierStatus = getSupplierStatus(supplier, balance);
 
           return (
@@ -256,15 +379,29 @@ function Suppliers() {
                     {supplierStatus.text}
                   </div>
 
-                  <button
-                    className="supplier-delete-btn"
-                    disabled={deletingSupplierId === supplier.id}
-                    type="button"
-                    aria-label={`${supplier.name} ni o'chirish`}
-                    onClick={() => handleDeleteSupplier(supplier)}
-                  >
-                    <FiTrash2 />
-                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        className="supplier-edit-btn"
+                        type="button"
+                        aria-label={`${supplier.name} ni tahrirlash`}
+                        onClick={() => openEditModal(supplier)}
+                      >
+                        <FiEdit2 />
+                        <span>Tahrirlash</span>
+                      </button>
+
+                      <button
+                        className="supplier-delete-btn"
+                        disabled={deletingSupplierId === supplier.id}
+                        type="button"
+                        aria-label={`${supplier.name} ni o'chirish`}
+                        onClick={() => handleDeleteSupplier(supplier)}
+                      >
+                        <FiTrash2 />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -276,6 +413,7 @@ function Suppliers() {
                 {supplier.deadline && (
                   <span>Qarz olingan sana {supplier.deadline}</span>
                 )}
+                {supplier.notes && <span>Izoh: {supplier.notes}</span>}
               </div>
 
               <div className="supplier-stats">
@@ -344,6 +482,110 @@ function Suppliers() {
           );
         })}
       </div>
+
+      {showEditModal && (
+        <div className="modal-overlay">
+          <div className="payment-modal supplier-edit-modal">
+            <div className="supplier-modal-header">
+              <div>
+                <h2>Ta'minotchini tahrirlash</h2>
+                <p>{editingSupplier?.name}</p>
+              </div>
+
+              <button
+                className="supplier-modal-close"
+                onClick={() => setShowEditModal(false)}
+                type="button"
+                aria-label="Modalni yopish"
+              >
+                <FiX />
+              </button>
+            </div>
+
+            <div className="supplier-edit-form">
+              <label>
+                <span>Supplier nomi</span>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => updateEditField("name", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Telefon raqami</span>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => updateEditField("phone", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Sana</span>
+                <input
+                  type="date"
+                  value={editForm.deadline}
+                  onChange={(e) => updateEditField("deadline", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Umumiy qarz</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.debt}
+                  onChange={(e) => updateEditField("debt", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>To'langan summa</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.paid}
+                  onChange={(e) => updateEditField("paid", e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Qolgan qarz</span>
+                <input type="text" value={formatPrice(editBalance)} readOnly />
+              </label>
+
+              <label className="full-width">
+                <span>Izoh</span>
+                <textarea
+                  rows="3"
+                  value={editForm.notes}
+                  onChange={(e) => updateEditField("notes", e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="payment-actions">
+              {editError && <div className="form-error">{editError}</div>}
+
+              <button
+                className="cancel-btn"
+                onClick={() => setShowEditModal(false)}
+              >
+                Bekor qilish
+              </button>
+
+              <button
+                className="confirm-btn"
+                disabled={savingEdit}
+                onClick={handleUpdateSupplier}
+              >
+                {savingEdit ? "Saqlanmoqda..." : "Saqlash"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
