@@ -379,8 +379,13 @@ function Inventory() {
     0,
   );
 
-  const totalValue = inventory.reduce(
-    (acc, item) => acc + Number(item.quantity) * Number(item.sellPrice),
+  const totalCostValue = inventory.reduce(
+    (acc, item) => acc + Number(item.quantity) * Number(item.costPrice || 0),
+    0,
+  );
+
+  const totalSellValue = inventory.reduce(
+    (acc, item) => acc + Number(item.quantity) * Number(item.sellPrice || 0),
     0,
   );
   const lowStock = inventory.filter((item) => item.quantity < 20).length;
@@ -460,9 +465,15 @@ function Inventory() {
         </div>
 
         <div className="inventory-stat-card">
-          <h3>Umumiy qiymat</h3>
+          <h3>Umumiy tannarx</h3>
 
-          <h2>{formatPrice(totalValue)}</h2>
+          <h2>{formatPrice(totalCostValue)}</h2>
+        </div>
+
+        <div className="inventory-stat-card">
+          <h3>Umumiy sotuv qiymati</h3>
+
+          <h2>{formatPrice(totalSellValue)}</h2>
         </div>
 
         <div className="inventory-stat-card danger">
