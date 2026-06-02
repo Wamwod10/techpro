@@ -28,6 +28,19 @@ const normalizeInventory = (items = []) =>
       sellPrice: Number(item.sellPrice ?? item.price ?? 0),
     }));
 
+const getStoreErrorMessage = (err) => {
+  const message = err.response?.data?.message || err.message || "";
+
+  if (
+    message.toLowerCase().includes("column") ||
+    message.toLowerCase().includes("migration")
+  ) {
+    return "Server database migration to'liq apply qilinmagan. Iltimos, Render loglarini tekshiring.";
+  }
+
+  return message || "Serverdan ma'lumot olishda xatolik";
+};
+
 export const StoreProvider = ({ children }) => {
   const { currentUser } = useAuth();
   const [inventory, setInventoryState] = useState([]);
@@ -74,7 +87,7 @@ export const StoreProvider = ({ children }) => {
           // Core store data is already usable; history can be retried manually.
         });
     } catch (err) {
-      setError(err.response?.data?.message || "Serverdan ma'lumot olishda xatolik");
+      setError(getStoreErrorMessage(err));
     } finally {
       setLoading(false);
     }
