@@ -30,7 +30,8 @@ function Products() {
   const isAdmin = currentUser?.role === "admin";
   const [search, setSearch] = useState("");
 
-  const { inventory, setInventory, setSuppliers, addActivityLog } = useStore();
+  const { inventory, setInventory, suppliers, setSuppliers, addActivityLog } =
+    useStore();
 
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -78,11 +79,22 @@ function Products() {
       quantity: product.quantity,
       costPrice: product.costPrice,
       sellPrice: product.sellPrice,
-      supplier: product.supplier,
+      supplier: product.supplier || "",
     });
 
     setShowModal(true);
   };
+
+  const supplierOptions = [
+    ...new Set(
+      [
+        ...suppliers.map((supplier) => supplier.name),
+        ...inventory.map((item) => item.supplier),
+      ]
+        .map((name) => (name || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 
   const handleSaveProduct = () => {
     if (savingProduct || !formData.name || !formData.sku || !formData.sellPrice) {
@@ -94,6 +106,7 @@ function Products() {
 
     const productPayload = {
       ...formData,
+      supplier: (formData.supplier || "").trim(),
       quantity: Math.max(0, Number(formData.quantity || 0)),
       stock: Math.max(0, Number(formData.quantity || 0)),
       costPrice: Number(formData.costPrice || 0),
@@ -657,6 +670,12 @@ function Products() {
             </div>
 
             <div className="product-form">
+              <datalist id="product-supplier-options">
+                {supplierOptions.map((supplierName) => (
+                  <option key={supplierName} value={supplierName} />
+                ))}
+              </datalist>
+
               <input
                 type="text"
                 placeholder="Mahsulot nomi"
@@ -712,9 +731,11 @@ function Products() {
               />
 
               <input
+                className="product-form-wide"
+                list="product-supplier-options"
                 type="text"
                 placeholder="Ta’minotchi"
-                value={formData.supplier}
+                value={formData.supplier || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, supplier: e.target.value })
                 }

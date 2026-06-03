@@ -869,6 +869,12 @@ function Inventory() {
             </div>
 
             <div className="modal-form edit-product-form">
+              <datalist id="edit-supplier-options">
+                {supplierOptions.map((supplierName) => (
+                  <option key={supplierName} value={supplierName} />
+                ))}
+              </datalist>
+
               <div className="modal-section full-width">
                 <h3>Mahsulot</h3>
 
@@ -897,6 +903,23 @@ function Inventory() {
                     }
                   />
                 </div>
+              </div>
+
+              <div className="modal-section">
+                <h3>Ta'minotchi</h3>
+
+                <input
+                  list="edit-supplier-options"
+                  type="text"
+                  placeholder="Ta'minotchi nomi"
+                  value={formData.supplier || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      supplier: e.target.value,
+                    })
+                  }
+                />
               </div>
 
               <div className="modal-section">

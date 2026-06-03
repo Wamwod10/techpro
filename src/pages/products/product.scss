@@ -302,6 +302,10 @@
   }
 }
 
+.product-form-wide {
+  grid-column: span 2;
+}
+
 .save-product-btn {
   grid-column: span 2;
   height: 46px;
@@ -610,6 +614,10 @@ body.dark-mode {
 
   .product-form {
     grid-template-columns: 1fr;
+  }
+
+  .product-form-wide {
+    grid-column: auto;
   }
 
   .save-product-btn {

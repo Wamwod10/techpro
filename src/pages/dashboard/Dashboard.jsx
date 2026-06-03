@@ -161,6 +161,7 @@ function Dashboard() {
   );
 
   const lowStock = inventory.filter((item) => item.quantity < 15);
+  const visibleLowStock = lowStock.slice(0, 10);
 
   const totalHistorySales = salesHistory.reduce(
     (acc, day) => acc + getDayNetTotal(day),
@@ -562,7 +563,7 @@ function Dashboard() {
           {lowStock.length === 0 ? (
             <p className="dashboard-empty-text">Kam qolgan mahsulot yo‘q</p>
           ) : (
-            lowStock.map((item) => (
+            visibleLowStock.map((item) => (
               <div className="stock-item" key={item.id}>
                 <div>
                   <strong>{item.name}</strong>

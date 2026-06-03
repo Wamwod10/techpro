@@ -85,29 +85,16 @@ function MainLayout() {
     })
     .slice(0, 5);
 
-  const lowStockProducts = inventory.filter(
-    (product) => Number(product.quantity) > 0 && Number(product.quantity) < 5,
-  );
-
   const outOfStockProducts = inventory.filter(
-    (product) => Number(product.quantity) === 0,
+    (product) => Number(product.quantity || 0) <= 0,
   );
 
-  const notifications = [
-    ...outOfStockProducts.map((product) => ({
-      id: `out-${product.id}`,
-      title: "Mahsulot tugagan",
-      text: `${product.name} omborda 0 dona qoldi`,
-      type: "danger",
-    })),
-
-    ...lowStockProducts.map((product) => ({
-      id: `low-${product.id}`,
-      title: "Kam qolgan mahsulot",
-      text: `${product.name} ${product.quantity} dona qoldi`,
-      type: "warning",
-    })),
-  ];
+  const notifications = outOfStockProducts.map((product) => ({
+    id: `out-${product.id}`,
+    title: "Mahsulot tugagan",
+    text: `${product.name} omborda 0 dona qoldi`,
+    type: "danger",
+  }));
 
   const months = [
     "Yanvar",
