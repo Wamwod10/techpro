@@ -252,10 +252,11 @@
 }
 
 .product-modal {
-  width: 520px;
+  width: min(520px, calc(100vw - 32px));
   background: #fff;
   border-radius: 24px;
   padding: 24px;
+  box-sizing: border-box;
 }
 
 .modal-top {
@@ -286,14 +287,17 @@
 
 .product-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 
   input {
+    width: 100%;
+    min-width: 0;
     height: 44px;
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     padding: 0 14px;
+    box-sizing: border-box;
     outline: none;
   }
 
@@ -308,6 +312,9 @@
 
 .save-product-btn {
   grid-column: span 2;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   height: 46px;
   border: none;
   border-radius: 14px;
