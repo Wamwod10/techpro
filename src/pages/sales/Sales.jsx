@@ -1,6 +1,12 @@
 import { useState } from "react";
 
-import { FiSearch, FiShoppingCart, FiPlus, FiMinus } from "react-icons/fi";
+import {
+  FiSearch,
+  FiShoppingCart,
+  FiPlus,
+  FiMinus,
+  FiPercent,
+} from "react-icons/fi";
 
 import "./sales.scss";
 import { formatPrice } from "../../utils/formatPrice";
@@ -11,7 +17,12 @@ import {
   applyReturnToSales,
   buildReturnRecord,
   getAvailableReturnQty,
+  getItemDiscountTotal,
+  getItemFinalPrice,
+  getItemOriginalPrice,
+  getSaleDiscountTotal,
   getSaleNetTotal,
+  getSaleSubtotal,
   getSalesNetTotal,
   increaseInventoryQuantity,
 } from "../../utils/returns";
@@ -34,6 +45,12 @@ function Sales() {
   } = useStore();
 
   const [cart, setCart] = useState([]);
+  const [discountModalItem, setDiscountModalItem] = useState(null);
+  const [discountMode, setDiscountMode] = useState("percent");
+  const [discountPercent, setDiscountPercent] = useState(5);
+  const [customPercent, setCustomPercent] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountWarning, setDiscountWarning] = useState("");
 
   const [search, setSearch] = useState("");
 
@@ -80,6 +97,10 @@ function Sales() {
         {
           ...product,
           price: product.sellPrice,
+          originalPrice: product.sellPrice,
+          finalPrice: product.sellPrice,
+          itemDiscountPercent: 0,
+          itemDiscountAmount: 0,
           quantity: 1,
         },
       ]);
@@ -128,9 +149,102 @@ function Sales() {
       String(product.sku || "").toLowerCase().includes(search.toLowerCase()),
   );
 
-  const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const cartSubtotal = cart.reduce(
+    (acc, item) => acc + getItemOriginalPrice(item) * Number(item.quantity || 0),
+    0,
+  );
+  const cartDiscountTotal = cart.reduce(
+    (acc, item) => acc + getItemDiscountTotal(item),
+    0,
+  );
+  const total = cart.reduce(
+    (acc, item) => acc + getItemFinalPrice(item) * Number(item.quantity || 0),
+    0,
+  );
 
   const todayISO = new Date().toISOString().slice(0, 10);
+
+  const openDiscountModal = (item) => {
+    setDiscountModalItem(item);
+    setDiscountWarning("");
+
+    if (Number(item.itemDiscountAmount || 0) > 0) {
+      setDiscountMode("amount");
+      setDiscountAmount(String(item.itemDiscountAmount));
+      setDiscountPercent(5);
+      setCustomPercent("");
+      return;
+    }
+
+    const percent = Number(item.itemDiscountPercent || 0);
+    setDiscountMode("percent");
+    setDiscountPercent([5, 10, 15].includes(percent) ? percent : "custom");
+    setCustomPercent([5, 10, 15].includes(percent) ? "" : String(percent || ""));
+    setDiscountAmount("");
+  };
+
+  const getDiscountPreview = () => {
+    if (!discountModalItem) return null;
+
+    const originalPrice = getItemOriginalPrice(discountModalItem);
+    const percent =
+      discountMode === "percent"
+        ? Number(discountPercent === "custom" ? customPercent : discountPercent)
+        : 0;
+    const amount = discountMode === "amount" ? Number(discountAmount || 0) : 0;
+    const percentDiscount = (originalPrice * Math.max(0, percent)) / 100;
+    const discountPerUnit = Math.min(
+      originalPrice,
+      Math.max(0, percentDiscount + Math.max(0, amount)),
+    );
+    const finalPrice = Math.max(0, originalPrice - discountPerUnit);
+    const belowCost =
+      Number(discountModalItem.costPrice || 0) > 0 &&
+      finalPrice < Number(discountModalItem.costPrice || 0);
+
+    return {
+      percent: Math.min(100, Math.max(0, percent)),
+      amount: Math.max(0, amount),
+      discountPerUnit,
+      finalPrice,
+      belowCost,
+    };
+  };
+
+  const applyDiscount = () => {
+    const preview = getDiscountPreview();
+
+    if (!discountModalItem || !preview) return;
+
+    if (preview.belowCost && currentUser?.role !== "admin") {
+      setDiscountWarning("Bu skidka tannarxdan past tushiradi. Kassirga ruxsat yo'q.");
+      return;
+    }
+
+    if (preview.belowCost && currentUser?.role === "admin" && !discountWarning) {
+      setDiscountWarning("Diqqat: final narx tannarxdan past. Qayta bossangiz saqlanadi.");
+      return;
+    }
+
+    setCart((items) =>
+      items.map((item) =>
+        item.id === discountModalItem.id
+          ? {
+              ...item,
+              price: preview.finalPrice,
+              originalPrice: getItemOriginalPrice(item),
+              finalPrice: preview.finalPrice,
+              itemDiscountPercent:
+                discountMode === "percent" ? preview.percent : 0,
+              itemDiscountAmount:
+                discountMode === "amount" ? preview.amount : 0,
+            }
+          : item,
+      ),
+    );
+    setDiscountModalItem(null);
+    setDiscountWarning("");
+  };
 
   const handleCheckout = () => {
     if (checkoutSaving || cart.length === 0 || !activeShift) return;
@@ -151,12 +265,20 @@ function Sales() {
 
       items: cart.map((item) => ({
         ...item,
+        price: getItemFinalPrice(item),
+        originalPrice: getItemOriginalPrice(item),
+        finalPrice: getItemFinalPrice(item),
+        itemDiscountPercent: Number(item.itemDiscountPercent || 0),
+        itemDiscountAmount: Number(item.itemDiscountAmount || 0),
         costPrice: item.costPrice || 0,
         returnedQty: 0,
         returnStatus: "none",
       })),
 
       total,
+      saleSubtotal: cartSubtotal,
+      saleDiscountTotal: cartDiscountTotal,
+      saleTotal: total,
       returnedTotal: 0,
       paymentMethod,
 
@@ -426,6 +548,8 @@ function Sales() {
     setShowCloseModal(false);
   };
 
+  const discountPreview = getDiscountPreview();
+
   return (
     <div className="sales-page">
       <div className="sales-products">
@@ -507,20 +631,42 @@ function Sales() {
                   <h4>{item.name}</h4>
 
                   <p>
-                    {formatPrice(item.price)} × {item.quantity}
+                    {getItemDiscountTotal(item) > 0 && (
+                      <span className="old-price">
+                        {formatPrice(getItemOriginalPrice(item))}
+                      </span>
+                    )}
+                    {formatPrice(getItemFinalPrice(item))} × {item.quantity}
                   </p>
+
+                  {getItemDiscountTotal(item) > 0 && (
+                    <small className="discount-note">
+                      Skidka: {formatPrice(getItemDiscountTotal(item))}
+                    </small>
+                  )}
                 </div>
 
-                <div className="qty-controls">
-                  <button onClick={() => decreaseQty(item.id)}>
-                    <FiMinus />
+                <div className="cart-actions">
+                  <button
+                    className="discount-btn"
+                    onClick={() => openDiscountModal(item)}
+                    type="button"
+                  >
+                    <FiPercent />
+                    Skidka
                   </button>
 
-                  <span>{item.quantity}</span>
+                  <div className="qty-controls">
+                    <button onClick={() => decreaseQty(item.id)}>
+                      <FiMinus />
+                    </button>
 
-                  <button onClick={() => increaseQty(item.id)}>
-                    <FiPlus />
-                  </button>
+                    <span>{item.quantity}</span>
+
+                    <button onClick={() => increaseQty(item.id)}>
+                      <FiPlus />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -528,8 +674,18 @@ function Sales() {
         </div>
 
         <div className="cart-footer">
+          <div className="cart-total-row">
+            <span>Jami narx</span>
+            <strong>{formatPrice(cartSubtotal)}</strong>
+          </div>
+
+          <div className="cart-total-row discount">
+            <span>Skidka</span>
+            <strong>-{formatPrice(cartDiscountTotal)}</strong>
+          </div>
+
           <div className="total">
-            <span>Jami:</span>
+            <span>To'lovga:</span>
 
             <h2>{formatPrice(total)}</h2>
           </div>
@@ -625,11 +781,15 @@ function Sales() {
                           </span>
                           <small>
                             {getAvailableReturnQty(item)} dona qaytarish mumkin
+                            {getItemDiscountTotal(item) > 0 &&
+                              ` · skidka ${formatPrice(getItemDiscountTotal(item))}`}
                           </small>
                         </div>
 
                         <strong>
-                          {formatPrice(item.price * item.quantity)}
+                          {formatPrice(
+                            getItemFinalPrice(item) * Number(item.quantity || 0),
+                          )}
                         </strong>
                       </div>
                     ))}
@@ -661,6 +821,139 @@ function Sales() {
         <div className="success-alert">Savdo muvaffaqiyatli yakunlandi</div>
       )}
       {salesError && <div className="success-alert error">{salesError}</div>}
+      {discountModalItem && discountPreview && (
+        <div className="modal-overlay">
+          <div className="discount-modal">
+            <h2>Skidka</h2>
+            <p>{discountModalItem.name}</p>
+
+            <div className="discount-type">
+              <button
+                className={discountMode === "percent" ? "active" : ""}
+                onClick={() => {
+                  setDiscountMode("percent");
+                  setDiscountWarning("");
+                }}
+                type="button"
+              >
+                Foiz
+              </button>
+
+              <button
+                className={discountMode === "amount" ? "active" : ""}
+                onClick={() => {
+                  setDiscountMode("amount");
+                  setDiscountWarning("");
+                }}
+                type="button"
+              >
+                Summa
+              </button>
+            </div>
+
+            {discountMode === "percent" ? (
+              <div className="discount-options">
+                {[5, 10, 15].map((percent) => (
+                  <button
+                    key={percent}
+                    className={discountPercent === percent ? "active" : ""}
+                    onClick={() => {
+                      setDiscountPercent(percent);
+                      setCustomPercent("");
+                      setDiscountWarning("");
+                    }}
+                    type="button"
+                  >
+                    {percent}%
+                  </button>
+                ))}
+
+                <button
+                  className={discountPercent === "custom" ? "active" : ""}
+                  onClick={() => {
+                    setDiscountPercent("custom");
+                    setDiscountWarning("");
+                  }}
+                  type="button"
+                >
+                  Custom
+                </button>
+              </div>
+            ) : null}
+
+            {discountMode === "percent" && discountPercent === "custom" && (
+              <input
+                className="discount-input"
+                type="number"
+                min="0"
+                max="100"
+                value={customPercent}
+                onChange={(e) => {
+                  setCustomPercent(e.target.value);
+                  setDiscountWarning("");
+                }}
+                placeholder="Custom %"
+              />
+            )}
+
+            {discountMode === "amount" && (
+              <input
+                className="discount-input"
+                type="number"
+                min="0"
+                value={discountAmount}
+                onChange={(e) => {
+                  setDiscountAmount(e.target.value);
+                  setDiscountWarning("");
+                }}
+                placeholder="Chegirma summasi"
+              />
+            )}
+
+            <div className="discount-preview">
+              <div>
+                <span>Asl narx</span>
+                <strong>{formatPrice(getItemOriginalPrice(discountModalItem))}</strong>
+              </div>
+
+              <div>
+                <span>Skidka</span>
+                <strong>-{formatPrice(discountPreview.discountPerUnit)}</strong>
+              </div>
+
+              <div>
+                <span>Final narx</span>
+                <strong>{formatPrice(discountPreview.finalPrice)}</strong>
+              </div>
+            </div>
+
+            {discountWarning && (
+              <div className="discount-warning">{discountWarning}</div>
+            )}
+
+            <div className="return-actions">
+              <button
+                className="cancel-return-btn"
+                onClick={() => {
+                  setDiscountModalItem(null);
+                  setDiscountWarning("");
+                }}
+                type="button"
+              >
+                Bekor qilish
+              </button>
+
+              <button
+                className="confirm-return-btn"
+                onClick={applyDiscount}
+                type="button"
+              >
+                Saqlash
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showCloseModal && (
         <div className="modal-overlay">
           <div className="close-modal">
@@ -747,17 +1040,41 @@ function Sales() {
             <div className="receipt-products">
               {lastSale.items.map((item) => (
                 <div className="receipt-item" key={item.id}>
-                  <div>{item.name}</div>
+                  <div>
+                    <span>{item.name}</span>
+                    {getItemDiscountTotal(item) > 0 && (
+                      <small>
+                        Skidka: {formatPrice(getItemDiscountTotal(item))}
+                      </small>
+                    )}
+                  </div>
 
-                  <strong>×{item.quantity}</strong>
+                  <strong>
+                    ×{item.quantity} ·{" "}
+                    {formatPrice(
+                      getItemFinalPrice(item) * Number(item.quantity || 0),
+                    )}
+                  </strong>
                 </div>
               ))}
             </div>
 
-            <div className="receipt-total">
-              <span>Jami</span>
+            <div className="receipt-info receipt-money">
+              <span>Jami narx:</span>
 
-              <h2>{formatPrice(lastSale.total)}</h2>
+              <strong>{formatPrice(getSaleSubtotal(lastSale))}</strong>
+            </div>
+
+            <div className="receipt-info receipt-money discount">
+              <span>Skidka:</span>
+
+              <strong>-{formatPrice(getSaleDiscountTotal(lastSale))}</strong>
+            </div>
+
+            <div className="receipt-total">
+              <span>To'lovga</span>
+
+              <h2>{formatPrice(getSaleNetTotal(lastSale))}</h2>
             </div>
 
             <button

@@ -12,6 +12,7 @@ import { formatPrice } from "../../utils/formatPrice";
 import { getApiErrorMessage } from "../../utils/apiFlow";
 import {
   getDayNetTotal,
+  getItemFinalPrice,
   getNetSoldQty,
   getSaleNetTotal,
   getSaleProfit,
@@ -128,8 +129,8 @@ function Dashboard() {
         productName: item.name,
         sku: item.sku,
         quantity: getNetSoldQty(item),
-        price: Number(item.price || 0),
-        total: Number(item.price || 0) * getNetSoldQty(item),
+        price: getItemFinalPrice(item),
+        total: getItemFinalPrice(item) * getNetSoldQty(item),
         paymentMethod: sale.paymentMethod,
         time: sale.time,
         date: sale.date,
@@ -246,7 +247,7 @@ function Dashboard() {
       (sale.items || []).forEach((saleItem) => {
         if (String(saleItem.productId || saleItem.id) === String(item.id)) {
           categoryProfitMap[category] +=
-            (Number(saleItem.price || 0) -
+            (getItemFinalPrice(saleItem) -
               Number(saleItem.costPrice || item.costPrice || 0)) *
             getNetSoldQty(saleItem);
         }

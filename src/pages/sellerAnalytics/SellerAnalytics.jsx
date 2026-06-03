@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useStore } from "../../context/StoreContext";
 import { formatPrice } from "../../utils/formatPrice";
 import {
+  getItemFinalPrice,
   getNetSoldQty,
   getSaleNetTotal,
   getSaleProfit,
@@ -98,10 +99,9 @@ function SellerAnalytics() {
     const netQty = getNetSoldQty(item);
 
     acc[item.name].quantity += netQty;
-    acc[item.name].revenue += Number(item.price || 0) * netQty;
+    acc[item.name].revenue += getItemFinalPrice(item) * netQty;
     acc[item.name].profit +=
-      (Number(item.price || 0) - Number(item.costPrice || 0)) *
-      netQty;
+      (getItemFinalPrice(item) - Number(item.costPrice || 0)) * netQty;
 
     return acc;
   }, {});

@@ -15,6 +15,9 @@ import {
   buildReturnRecord,
   getDayNetTotal,
   getAvailableReturnQty,
+  getItemDiscountTotal,
+  getItemFinalPrice,
+  getSaleDiscountTotal,
   getSaleNetTotal,
   increaseInventoryQuantity,
 } from "../../utils/returns";
@@ -607,6 +610,11 @@ function History() {
                           <div className="history-sale-top">
                             <div>
                               <strong>{formatPrice(getSaleNetTotal(sale))}</strong>
+                              {getSaleDiscountTotal(sale) > 0 && (
+                                <small>
+                                  Skidka: {formatPrice(getSaleDiscountTotal(sale))}
+                                </small>
+                              )}
                               <span>{sale.time}</span>
                             </div>
 
@@ -631,10 +639,20 @@ function History() {
                                   <small>
                                     {getAvailableReturnQty(product)} dona
                                     qaytarish mumkin
+                                    {getItemDiscountTotal(product) > 0 &&
+                                      ` · skidka ${formatPrice(
+                                        getItemDiscountTotal(product),
+                                      )}`}
                                   </small>
                                 </span>
 
-                                <strong>× {product.quantity}</strong>
+                                <strong>
+                                  × {product.quantity} ·{" "}
+                                  {formatPrice(
+                                    getItemFinalPrice(product) *
+                                      Number(product.quantity || 0),
+                                  )}
+                                </strong>
                               </div>
                             ))}
                           </div>

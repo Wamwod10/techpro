@@ -124,7 +124,9 @@ export const StoreProvider = ({ children }) => {
 
   const setDailySales = (updater) => {
     setDailySalesState((previous) =>
-      typeof updater === "function" ? updater(previous) : updater || [],
+      (typeof updater === "function" ? updater(previous) : updater || []).map(
+        normalizeSaleReturns,
+      ),
     );
   };
 

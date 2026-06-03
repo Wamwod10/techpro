@@ -1,6 +1,6 @@
 import { useStore } from "../../context/StoreContext";
 import { formatPrice } from "../../utils/formatPrice";
-import { getNetSoldQty } from "../../utils/returns";
+import { getItemFinalPrice, getNetSoldQty } from "../../utils/returns";
 import "./analytics.scss";
 
 function Analytics() {
@@ -25,7 +25,7 @@ function Analytics() {
           name: item.name,
           sku: item.sku,
           quantity: 0,
-          sellPrice: Number(item.price || 0),
+          sellPrice: getItemFinalPrice(item),
           costPrice: Number(item.costPrice || 0),
           category: "Arxiv",
         });
@@ -48,14 +48,14 @@ function Analytics() {
     );
 
     const revenue = soldItems.reduce(
-      (acc, item) => acc + Number(item.price || 0) * getNetSoldQty(item),
+      (acc, item) => acc + getItemFinalPrice(item) * getNetSoldQty(item),
       0,
     );
 
     const profit = soldItems.reduce(
       (acc, item) =>
         acc +
-        (Number(item.price || 0) -
+        (getItemFinalPrice(item) -
           Number(item.costPrice || product.costPrice || 0)) *
           getNetSoldQty(item),
       0,

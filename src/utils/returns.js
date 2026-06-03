@@ -20,17 +20,85 @@ export const getReturnStatus = (item) => {
   return getAvailableReturnQty(item) <= 0 ? "returned" : "partial_returned";
 };
 
-export const normalizeSaleItemReturn = (item) => ({
-  ...item,
-  returnedQty: getReturnedQty(item),
-  returnStatus: item?.returnStatus || getReturnStatus(item),
-});
+export const getItemOriginalPrice = (item) =>
+  Number(item?.originalPrice ?? item?.price ?? item?.sellPrice ?? 0);
 
-export const normalizeSaleReturns = (sale) => ({
-  ...sale,
-  returnedTotal: Number(sale?.returnedTotal || 0),
-  items: (sale?.items || []).map(normalizeSaleItemReturn),
-});
+export const getItemFinalPrice = (item) =>
+  Number(item?.finalPrice ?? item?.price ?? item?.sellPrice ?? 0);
+
+export const getItemDiscountPerUnit = (item) =>
+  Math.max(0, getItemOriginalPrice(item) - getItemFinalPrice(item));
+
+export const getItemDiscountTotal = (item, qty = Number(item?.quantity || 0)) =>
+  getItemDiscountPerUnit(item) * Number(qty || 0);
+
+export const normalizeSaleItemReturn = (item) => {
+  const originalPrice = getItemOriginalPrice(item);
+  const finalPrice = getItemFinalPrice(item);
+
+  return {
+    ...item,
+    price: finalPrice,
+    originalPrice,
+    finalPrice,
+    itemDiscountPercent: Number(item?.itemDiscountPercent || 0),
+    itemDiscountAmount: Number(item?.itemDiscountAmount || 0),
+    returnedQty: getReturnedQty(item),
+    returnStatus: item?.returnStatus || getReturnStatus(item),
+  };
+};
+
+export const getSaleSubtotal = (sale) => {
+  const items = sale?.items || [];
+
+  if (!items.length) {
+    return Number(sale?.saleSubtotal || sale?.total || sale?.saleTotal || 0);
+  }
+
+  return items.reduce(
+    (acc, item) => acc + getItemOriginalPrice(item) * Number(item.quantity || 0),
+    0,
+  );
+};
+
+export const getSaleDiscountTotal = (sale) => {
+  const items = sale?.items || [];
+
+  if (!items.length) {
+    return Number(sale?.saleDiscountTotal || 0);
+  }
+
+  return items.reduce(
+    (acc, item) => acc + getItemDiscountTotal(item, item.quantity),
+    0,
+  );
+};
+
+export const normalizeSaleReturns = (sale) => {
+  const items = (sale?.items || []).map(normalizeSaleItemReturn);
+  const normalized = {
+    ...sale,
+    items,
+    returnedTotal: Number(sale?.returnedTotal || 0),
+  };
+
+  const saleSubtotal = Number(sale?.saleSubtotal ?? getSaleSubtotal(normalized));
+  const saleDiscountTotal = Number(
+    sale?.saleDiscountTotal ?? getSaleDiscountTotal(normalized),
+  );
+  const saleTotal =
+    Number(sale?.saleTotal || 0) > 0
+      ? Number(sale.saleTotal || 0)
+      : Number(sale?.total ?? saleSubtotal - saleDiscountTotal);
+
+  return {
+    ...normalized,
+    saleSubtotal,
+    saleDiscountTotal,
+    saleTotal,
+    total: Number(sale?.total ?? saleTotal),
+  };
+};
 
 export const getNetSoldQty = (item) => getAvailableReturnQty(item);
 
@@ -45,7 +113,7 @@ export const getSaleNetTotal = (sale) => {
   }
 
   return items.reduce(
-    (acc, item) => acc + Number(item.price || 0) * getNetSoldQty(item),
+    (acc, item) => acc + getItemFinalPrice(item) * getNetSoldQty(item),
     0,
   );
 };
@@ -70,7 +138,7 @@ export const getSaleProfit = (sale) =>
   (sale?.items || []).reduce((acc, item) => {
     const netQty = getNetSoldQty(item);
     const profitPerItem =
-      Number(item.price || 0) - Number(item.costPrice || 0);
+      getItemFinalPrice(item) - Number(item.costPrice || 0);
 
     return acc + profitPerItem * netQty;
   }, 0);
@@ -102,7 +170,7 @@ export const applyReturnToSale = (sale, productId, requestedQty) => {
   }
 
   const quantity = clampReturnQty(targetItem, requestedQty);
-  const amount = Number(targetItem.price || 0) * quantity;
+  const amount = getItemFinalPrice(targetItem) * quantity;
 
   if (quantity <= 0) {
     return {
@@ -134,7 +202,8 @@ export const applyReturnToSale = (sale, productId, requestedQty) => {
     sale: {
       ...normalizedSale,
       items: updatedItems,
-      total: Math.max(0, Number(normalizedSale.total || 0) - amount),
+      total: Number(normalizedSale.total || 0),
+      saleTotal: Number(normalizedSale.saleTotal || normalizedSale.total || 0),
       returnedTotal: Number(normalizedSale.returnedTotal || 0) + amount,
     },
     returnedItem: targetItem,
