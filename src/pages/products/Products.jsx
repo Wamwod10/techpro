@@ -20,6 +20,7 @@ import {
   parseProductSaveResponse,
   upsertById,
 } from "../../utils/apiFlow";
+import { getStockStatus } from "../../utils/stock";
 
 import { useStore } from "../../context/StoreContext";
 
@@ -264,30 +265,6 @@ function Products() {
     }
   };
 
-  const getStatus = (qty) => {
-    if (qty === 0) {
-      return {
-        text: "Tugagan",
-
-        className: "danger",
-      };
-    }
-
-    if (qty <= 10) {
-      return {
-        text: "Kam qolgan",
-
-        className: "warning",
-      };
-    }
-
-    return {
-      text: "Mavjud",
-
-      className: "success",
-    };
-  };
-
   const sortOptions = [
     { value: "az", label: "A-Z" },
     { value: "za", label: "Z-A" },
@@ -317,7 +294,7 @@ function Products() {
         String(product.name || "").toLowerCase().includes(search.toLowerCase()) ||
         String(product.sku || "").toLowerCase().includes(search.toLowerCase());
 
-      const status = getStatus(Number(product.quantity)).className;
+      const status = getStockStatus(Number(product.quantity)).className;
 
       const matchesStatus = statusFilter === "all" || statusFilter === status;
 
@@ -368,7 +345,7 @@ function Products() {
       product.category || "Kategoriya yo'q",
       formatPrice(product.sellPrice),
       `${product.quantity} dona`,
-      getStatus(Number(product.quantity)).text,
+      getStockStatus(Number(product.quantity)).text,
     ]);
 
     autoTable(doc, {
@@ -615,10 +592,10 @@ function Products() {
                 <td>
                   <span
                     className={`status-badge ${
-                      getStatus(product.quantity).className
+                      getStockStatus(product.quantity).className
                     }`}
                   >
-                    {getStatus(product.quantity).text}
+                    {getStockStatus(product.quantity).text}
                   </span>
                 </td>
 

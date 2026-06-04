@@ -1,4 +1,5 @@
 import api from "./api";
+import { LOW_STOCK_THRESHOLD } from "../utils/stock";
 
 export const getTelegramSettings = async () => {
   const { data } = await api.get("/telegram/settings");
@@ -51,8 +52,11 @@ export const notifyStockAlertsForInventoryChange = (
     }
 
     const isNewLowStock =
-      previousQty === undefined && nextQty > 0 && nextQty <= 5;
-    const crossedLowStock = previousQty > 5 && nextQty > 0 && nextQty <= 5;
+      previousQty === undefined && nextQty > 0 && nextQty <= LOW_STOCK_THRESHOLD;
+    const crossedLowStock =
+      previousQty > LOW_STOCK_THRESHOLD &&
+      nextQty > 0 &&
+      nextQty <= LOW_STOCK_THRESHOLD;
 
     if (isNewLowStock || crossedLowStock) {
       void notifyLowStock(item);

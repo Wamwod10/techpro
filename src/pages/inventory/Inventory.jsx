@@ -14,6 +14,7 @@ import {
   FiX,
   FiChevronDown,
   FiCheck,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { formatPrice } from "../../utils/formatPrice";
 import {
@@ -22,6 +23,7 @@ import {
   parseProductSaveResponse,
   upsertById,
 } from "../../utils/apiFlow";
+import { isLowStock } from "../../utils/stock";
 
 function Inventory() {
   const { currentUser } = useAuth();
@@ -34,6 +36,7 @@ function Inventory() {
   ];
 
   const [showModal, setShowModal] = useState(false);
+  const [showQuickModal, setShowQuickModal] = useState(false);
 
   const [editModal, setEditModal] = useState(false);
 
@@ -45,9 +48,28 @@ function Inventory() {
   const [deletingInventoryId, setDeletingInventoryId] = useState(null);
   const [inventoryError, setInventoryError] = useState("");
 
+  const getNextEntryNo = () => {
+    const lastNumber = Number(localStorage.getItem("techpro_last_entry_no") || 0);
+    return `IN-${String(lastNumber + 1).padStart(6, "0")}`;
+  };
+
   const generateSku = () => {
     return `TP-${Math.floor(1000 + Math.random() * 9000)}`;
   };
+
+  const createQuickRow = () => ({
+    id: crypto.randomUUID(),
+    name: "",
+    sku: generateSku(),
+    category: "",
+    quantity: "",
+    costPrice: "",
+    sellPrice: "",
+    duplicateAction: "merge",
+  });
+
+  const createDefaultQuickRows = () =>
+    Array.from({ length: 4 }, () => createQuickRow());
 
   const [formData, setFormData] = useState({
     name: "",
@@ -65,6 +87,14 @@ function Inventory() {
     date: new Date().toISOString().split("T")[0],
   });
 
+  const [quickForm, setQuickForm] = useState({
+    entryNo: getNextEntryNo(),
+    supplier: "",
+    date: new Date().toISOString().split("T")[0],
+    paymentStatus: "paid",
+  });
+  const [quickRows, setQuickRows] = useState(createDefaultQuickRows);
+
   const {
     inventory,
     setInventory,
@@ -73,6 +103,7 @@ function Inventory() {
     setSuppliers,
 
     addActivityLog,
+    reloadStore,
   } = useStore();
 
   const handleEdit = (item) => {
@@ -180,6 +211,129 @@ function Inventory() {
       supplierPhone: formData.supplierPhone || "",
       date: formData.date || new Date().toISOString().split("T")[0],
     };
+  };
+
+  const resetQuickEntry = () => {
+    setQuickForm({
+      entryNo: getNextEntryNo(),
+      supplier: "",
+      date: new Date().toISOString().split("T")[0],
+      paymentStatus: "paid",
+    });
+    setQuickRows(createDefaultQuickRows());
+    setInventoryError("");
+  };
+
+  const updateQuickRow = (id, key, value) => {
+    setQuickRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, [key]: value } : row)),
+    );
+  };
+
+  const getExistingProductByName = (name) =>
+    inventory.find(
+      (item) =>
+        String(item.name || "").trim().toLowerCase() ===
+        String(name || "").trim().toLowerCase(),
+    );
+
+  const filledQuickRows = quickRows.filter((row) => row.name.trim());
+  const quickSummary = filledQuickRows.reduce(
+    (summary, row) => {
+      const quantity = Number(row.quantity || 0);
+      const costPrice = Number(row.costPrice || 0);
+      const sellPrice = Number(row.sellPrice || 0);
+
+      return {
+        productTypes: summary.productTypes + 1,
+        totalQuantity: summary.totalQuantity + quantity,
+        purchaseValue: summary.purchaseValue + quantity * costPrice,
+        potentialSales: summary.potentialSales + quantity * sellPrice,
+      };
+    },
+    {
+      productTypes: 0,
+      totalQuantity: 0,
+      purchaseValue: 0,
+      potentialSales: 0,
+    },
+  );
+  quickSummary.estimatedProfit =
+    quickSummary.potentialSales - quickSummary.purchaseValue;
+  quickSummary.supplierDebt = isCreditPaymentStatus(quickForm.paymentStatus)
+    ? quickSummary.purchaseValue
+    : 0;
+
+  const handleQuickSave = () => {
+    if (savingInventory) return;
+
+    const payloadRows = quickRows
+      .filter((row) => row.name.trim())
+      .map((row) => ({
+        name: row.name.trim(),
+        sku: row.sku || generateSku(),
+        category: row.category || "Boshqa",
+        quantity: Number(row.quantity || 0),
+        costPrice: Number(row.costPrice || 0),
+        sellPrice: Number(row.sellPrice || 0),
+        duplicateAction: row.duplicateAction,
+      }));
+
+    if (!quickForm.supplier.trim() || payloadRows.length === 0) {
+      setInventoryError("Ta'minotchi va kamida bitta mahsulot kiritilishi kerak");
+      return;
+    }
+
+    if (payloadRows.some((row) => row.quantity <= 0 || row.sellPrice < 0 || row.costPrice < 0)) {
+      setInventoryError("Mahsulot soni va narxlarini tekshiring");
+      return;
+    }
+
+    setSavingInventory(true);
+    setInventoryError("");
+
+    api
+      .post("/inventory/quick-entry", {
+        ...quickForm,
+        supplierName: quickForm.supplier,
+        items: payloadRows,
+      })
+      .then(({ data }) => {
+        const products = data.products || [];
+        const updatedSuppliers = data.suppliers || [];
+
+        setInventory(
+          (current) => products.reduce((items, product) => upsertById(items, product), current),
+          { sync: false },
+        );
+
+        updatedSuppliers.forEach((supplier) => {
+          setSuppliers((current) => upsertById(current, supplier));
+        });
+
+        addActivityLog({
+          type: "inventory",
+          title: "Tezkor kirim qilindi",
+          description: `${quickForm.entryNo}: ${products.length} turdagi mahsulot kirim qilindi`,
+          userName: currentUser?.name,
+          userRole: currentUser?.role,
+        });
+
+        const entryNumber = Number(quickForm.entryNo.replace(/\D/g, ""));
+        if (entryNumber > 0) {
+          localStorage.setItem("techpro_last_entry_no", String(entryNumber));
+        }
+
+        setShowQuickModal(false);
+        resetQuickEntry();
+        void reloadStore?.();
+      })
+      .catch((error) => {
+        setInventoryError(
+          getApiErrorMessage(error, "Tezkor kirimni saqlashda xatolik"),
+        );
+      })
+      .finally(() => setSavingInventory(false));
   };
 
   const saveNewCategory = (category) => {
@@ -388,7 +542,7 @@ function Inventory() {
     (acc, item) => acc + Number(item.quantity) * Number(item.sellPrice || 0),
     0,
   );
-  const lowStock = inventory.filter((item) => item.quantity < 20).length;
+  const lowStock = inventory.filter((item) => isLowStock(item.quantity)).length;
 
   const handleDelete = (product) => {
     if (deletingInventoryId) return;
@@ -432,19 +586,34 @@ function Inventory() {
           <p>Mahsulot kirimi va ombor nazorati</p>
         </div>
 
-        <button
-          className="inventory-btn"
-          onClick={() => {
-            setShowModal(true);
-            setInventoryError("");
+        <div className="inventory-header-actions">
+          <button
+            className="inventory-btn"
+            onClick={() => {
+              setShowModal(true);
+              setInventoryError("");
 
-            resetForm();
-          }}
-        >
-          <FiPlus />
+              resetForm();
+            }}
+          >
+            <FiPlus />
 
-          <span>Yangi kirim</span>
-        </button>
+            <span>Yangi kirim</span>
+          </button>
+
+          <button
+            className="inventory-btn quick"
+            onClick={() => {
+              resetQuickEntry();
+              setShowQuickModal(true);
+            }}
+            type="button"
+          >
+            <FiPlus />
+
+            <span>Tezkor kirim</span>
+          </button>
+        </div>
       </div>
 
       {inventoryError && !showModal && !editModal && (
@@ -487,7 +656,9 @@ function Inventory() {
         {inventory.map((item, index) => (
           <div
             className={
-              item.quantity < 20 ? "inventory-card low-stock" : "inventory-card"
+              isLowStock(item.quantity)
+                ? "inventory-card low-stock"
+                : "inventory-card"
             }
             key={index}
           >
@@ -498,7 +669,7 @@ function Inventory() {
 
               <span
                 className={
-                  item.quantity < 20
+                  isLowStock(item.quantity)
                     ? "inventory-badge danger"
                     : "inventory-badge"
                 }
@@ -572,6 +743,228 @@ function Inventory() {
           </div>
         ))}
       </div>
+
+      {showQuickModal && (
+        <div className="modal-overlay">
+          <div className="inventory-modal quick-entry-modal">
+            <div className="modal-header">
+              <h2>Tezkor kirim</h2>
+
+              <button onClick={() => setShowQuickModal(false)} type="button">
+                <FiX />
+              </button>
+            </div>
+
+            <datalist id="quick-supplier-options">
+              {supplierOptions.map((supplierName) => (
+                <option key={supplierName} value={supplierName} />
+              ))}
+            </datalist>
+
+            <div className="quick-entry-head">
+              <input type="text" value={quickForm.entryNo} readOnly />
+              <input
+                list="quick-supplier-options"
+                type="text"
+                placeholder="Ta'minotchi"
+                value={quickForm.supplier}
+                onChange={(e) =>
+                  setQuickForm({ ...quickForm, supplier: e.target.value })
+                }
+              />
+              <input
+                type="date"
+                value={quickForm.date}
+                onChange={(e) =>
+                  setQuickForm({ ...quickForm, date: e.target.value })
+                }
+              />
+              <select
+                value={quickForm.paymentStatus}
+                onChange={(e) =>
+                  setQuickForm({
+                    ...quickForm,
+                    paymentStatus: e.target.value,
+                  })
+                }
+              >
+                <option value="paid">To'langan</option>
+                <option value="debt">Qarz</option>
+              </select>
+            </div>
+
+            <div className="quick-table-wrap">
+              <table className="quick-entry-table">
+                <thead>
+                  <tr>
+                    <th>Mahsulot nomi</th>
+                    <th>SKU</th>
+                    <th>Kategoriya</th>
+                    <th>Soni</th>
+                    <th>Tannarx</th>
+                    <th>Sotuv narxi</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {quickRows.map((row) => {
+                    const existingProduct = getExistingProductByName(row.name);
+
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <input
+                            type="text"
+                            value={row.name}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "name", e.target.value)
+                            }
+                          />
+
+                          {existingProduct && (
+                            <div className="duplicate-warning">
+                              <FiAlertTriangle />
+                              <span>Mavjud: {existingProduct.sku}</span>
+                              <label>
+                                <input
+                                  checked={row.duplicateAction === "merge"}
+                                  name={`duplicate-${row.id}`}
+                                  onChange={() =>
+                                    updateQuickRow(
+                                      row.id,
+                                      "duplicateAction",
+                                      "merge",
+                                    )
+                                  }
+                                  type="radio"
+                                />
+                                Qoldiqqa qo'shish
+                              </label>
+                              <label>
+                                <input
+                                  checked={row.duplicateAction === "new"}
+                                  name={`duplicate-${row.id}`}
+                                  onChange={() =>
+                                    updateQuickRow(
+                                      row.id,
+                                      "duplicateAction",
+                                      "new",
+                                    )
+                                  }
+                                  type="radio"
+                                />
+                                Yangi SKU
+                              </label>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={row.sku}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "sku", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={row.category}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "category", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            min="0"
+                            type="number"
+                            value={row.quantity}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "quantity", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            min="0"
+                            type="number"
+                            value={row.costPrice}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "costPrice", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            min="0"
+                            type="number"
+                            value={row.sellPrice}
+                            onChange={(e) =>
+                              updateQuickRow(row.id, "sellPrice", e.target.value)
+                            }
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              className="add-row-btn"
+              onClick={() => setQuickRows([...quickRows, createQuickRow()])}
+              type="button"
+            >
+              <FiPlus />
+              Mahsulot qo'shish
+            </button>
+
+            <div className="quick-summary">
+              <div>
+                <span>Mahsulot turi</span>
+                <strong>{quickSummary.productTypes}</strong>
+              </div>
+              <div>
+                <span>Umumiy dona</span>
+                <strong>{quickSummary.totalQuantity}</strong>
+              </div>
+              <div>
+                <span>Omborga kirgan qiymat</span>
+                <strong>{formatPrice(quickSummary.purchaseValue)}</strong>
+              </div>
+              <div>
+                <span>Potensial sotuv</span>
+                <strong>{formatPrice(quickSummary.potentialSales)}</strong>
+              </div>
+              <div>
+                <span>Taxminiy foyda</span>
+                <strong>{formatPrice(quickSummary.estimatedProfit)}</strong>
+              </div>
+              {quickSummary.supplierDebt > 0 && (
+                <div className="debt">
+                  <span>Supplier qarzi</span>
+                  <strong>{formatPrice(quickSummary.supplierDebt)}</strong>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions full-width quick-actions">
+              {inventoryError && <div className="form-error">{inventoryError}</div>}
+
+              <button
+                className="save-btn"
+                disabled={savingInventory}
+                onClick={handleQuickSave}
+              >
+                {savingInventory ? "Saqlanmoqda..." : "Saqlash"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">

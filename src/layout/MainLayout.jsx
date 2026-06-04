@@ -26,6 +26,7 @@ import {
 } from "react-icons/fi";
 
 import "./mainlayout.scss";
+import { isLowStock } from "../utils/stock";
 
 function MainLayout() {
   const { inventory, loading, error } = useStore();
@@ -88,13 +89,24 @@ function MainLayout() {
   const outOfStockProducts = inventory.filter(
     (product) => Number(product.quantity || 0) <= 0,
   );
+  const lowStockProducts = inventory.filter((product) =>
+    isLowStock(product.quantity),
+  );
 
-  const notifications = outOfStockProducts.map((product) => ({
-    id: `out-${product.id}`,
-    title: "Mahsulot tugagan",
-    text: `${product.name} omborda 0 dona qoldi`,
-    type: "danger",
-  }));
+  const notifications = [
+    ...outOfStockProducts.map((product) => ({
+      id: `out-${product.id}`,
+      title: "Mahsulot tugagan",
+      text: `${product.name} omborda 0 dona qoldi`,
+      type: "danger",
+    })),
+    ...lowStockProducts.map((product) => ({
+      id: `low-${product.id}`,
+      title: "Kam qolgan mahsulot",
+      text: `${product.name} omborda ${product.quantity} dona qoldi`,
+      type: "warning",
+    })),
+  ];
 
   const months = [
     "Yanvar",

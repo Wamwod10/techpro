@@ -17,6 +17,7 @@ import {
   getSaleNetTotal,
   getSaleProfit,
 } from "../../utils/returns";
+import { LOW_STOCK_THRESHOLD, isLowStock } from "../../utils/stock";
 
 import { useEffect, useState } from "react";
 import {
@@ -161,7 +162,7 @@ function Dashboard() {
     0,
   );
 
-  const lowStock = inventory.filter((item) => item.quantity < 15);
+  const lowStock = inventory.filter((item) => isLowStock(item.quantity));
   const visibleLowStock = lowStock.slice(0, 10);
 
   const totalHistorySales = salesHistory.reduce(
@@ -260,7 +261,7 @@ function Dashboard() {
 
   const activeProducts = inventory.filter((item) => item.quantity > 0).length;
   const healthyStockProducts = inventory.filter(
-    (item) => Number(item.quantity || 0) > 5,
+    (item) => Number(item.quantity || 0) > LOW_STOCK_THRESHOLD,
   ).length;
 
   const activeStockRatio =

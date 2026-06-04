@@ -89,7 +89,8 @@ function Analytics() {
 
   const slowProducts = [...productStats]
     .filter((item) => item.soldQty <= 2)
-    .sort((a, b) => a.soldQty - b.soldQty);
+    .sort((a, b) => a.soldQty - b.soldQty)
+    .slice(0, 10);
 
   const topProfitProducts = [...productStats]
     .filter((item) => item.profit > 0)
