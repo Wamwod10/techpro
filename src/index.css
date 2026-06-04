@@ -6,6 +6,52 @@
     box-sizing: border-box;
     font-family: "Inter";
     font-weight: 400;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root{
+    --scrollbar-track: rgba(148, 163, 184, 0.14);
+    --scrollbar-thumb: rgba(100, 116, 139, 0.48);
+    --scrollbar-thumb-hover: rgba(71, 85, 105, 0.68);
+}
+
+body.dark-mode{
+    --scrollbar-track: rgba(15, 23, 42, 0.46);
+    --scrollbar-thumb: rgba(71, 85, 105, 0.78);
+    --scrollbar-thumb-hover: rgba(100, 116, 139, 0.9);
+}
+
+*::-webkit-scrollbar{
+    width: 8px;
+    height: 8px;
+}
+
+*::-webkit-scrollbar-track{
+    background: var(--scrollbar-track);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb{
+    background: var(--scrollbar-thumb);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover{
+    background: var(--scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner{
+    background: transparent;
+}
+
+.custom-scroll{
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 a{

@@ -91,25 +91,9 @@
   gap: 20px;
 
   align-items: start;
-  max-height: 580px;
+  max-height: 780px;
   overflow-y: auto;
   padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #2563eb rgba(148, 163, 184, 0.16);
-}
-
-.products-grid::-webkit-scrollbar {
-  width: 8px;
-}
-
-.products-grid::-webkit-scrollbar-track {
-  background: rgba(148, 163, 184, 0.14);
-  border-radius: 999px;
-}
-
-.products-grid::-webkit-scrollbar-thumb {
-  background: #2563eb;
-  border-radius: 999px;
 }
 
 .product-card {
@@ -224,9 +208,9 @@
   flex-direction: column;
   position: sticky;
   top: 104px;
-  max-height: calc(100vh - 124px);
   min-width: 0;
-  overflow-y: auto;
+  align-self: start;
+  overflow: visible;
 }
 
 .cart-header {
@@ -259,9 +243,6 @@
   flex-direction: column;
 
   gap: 18px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 6px;
 }
 
 .cart-item {
@@ -575,29 +556,7 @@
   gap: 14px;
 
   max-height: 300px;
-
-  overflow-y: auto;
-  padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #2563eb rgba(148, 163, 184, 0.16);
-}
-
-.daily-sales-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.daily-sales-list::-webkit-scrollbar-track {
-  background: rgba(148, 163, 184, 0.14);
-  border-radius: 999px;
-}
-
-.daily-sales-list::-webkit-scrollbar-thumb {
-  background: #2563eb;
-  border-radius: 999px;
-}
-
-.daily-sales-list::-webkit-scrollbar-thumb:hover {
-  background: #1d4ed8;
+  overflow: hidden;
 }
 
 .daily-sale-card {
@@ -1102,30 +1061,6 @@ body.dark-mode {
     color: #22c55e;
   }
 
-  .daily-sales-list {
-    scrollbar-color: #60a5fa rgba(148, 163, 184, 0.18);
-  }
-
-  .products-grid {
-    scrollbar-color: #60a5fa rgba(148, 163, 184, 0.18);
-  }
-
-  .products-grid::-webkit-scrollbar-track {
-    background: rgba(148, 163, 184, 0.16);
-  }
-
-  .products-grid::-webkit-scrollbar-thumb {
-    background: #60a5fa;
-  }
-
-  .daily-sales-list::-webkit-scrollbar-track {
-    background: rgba(148, 163, 184, 0.16);
-  }
-
-  .daily-sales-list::-webkit-scrollbar-thumb {
-    background: #60a5fa;
-  }
-
   .daily-payment-badge.cash {
     background: rgba(22, 163, 74, 0.16);
     color: #86efac;
@@ -1480,7 +1415,7 @@ body.dark-mode {
 
   .products-grid {
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    max-height: min(520px, 62vh);
+    max-height: min(760px, 70vh);
   }
 }
 
@@ -1564,7 +1499,7 @@ body.dark-mode {
   .products-grid {
     grid-template-columns: 1fr;
     gap: 14px;
-    max-height: min(500px, 60vh);
+    max-height: min(700px, 68vh);
   }
 
   .product-card {

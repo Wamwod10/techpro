@@ -42,16 +42,12 @@ function Inventory() {
 
   const [editingItem, setEditingItem] = useState(null);
   const [openSelect, setOpenSelect] = useState(null);
+  const [quickCategoryOpen, setQuickCategoryOpen] = useState(null);
 
   const [savedCategories, setSavedCategories] = useState([]);
   const [savingInventory, setSavingInventory] = useState(false);
   const [deletingInventoryId, setDeletingInventoryId] = useState(null);
   const [inventoryError, setInventoryError] = useState("");
-
-  const getNextEntryNo = () => {
-    const lastNumber = Number(localStorage.getItem("techpro_last_entry_no") || 0);
-    return `IN-${String(lastNumber + 1).padStart(6, "0")}`;
-  };
 
   const generateSku = () => {
     return `TP-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -62,6 +58,7 @@ function Inventory() {
     name: "",
     sku: generateSku(),
     category: "",
+    customCategory: "",
     quantity: "",
     costPrice: "",
     sellPrice: "",
@@ -88,7 +85,6 @@ function Inventory() {
   });
 
   const [quickForm, setQuickForm] = useState({
-    entryNo: getNextEntryNo(),
     supplier: "",
     date: new Date().toISOString().split("T")[0],
     paymentStatus: "paid",
@@ -215,12 +211,12 @@ function Inventory() {
 
   const resetQuickEntry = () => {
     setQuickForm({
-      entryNo: getNextEntryNo(),
       supplier: "",
       date: new Date().toISOString().split("T")[0],
       paymentStatus: "paid",
     });
     setQuickRows(createDefaultQuickRows());
+    setQuickCategoryOpen(null);
     setInventoryError("");
   };
 
@@ -269,15 +265,22 @@ function Inventory() {
 
     const payloadRows = quickRows
       .filter((row) => row.name.trim())
-      .map((row) => ({
-        name: row.name.trim(),
-        sku: row.sku || generateSku(),
-        category: row.category || "Boshqa",
-        quantity: Number(row.quantity || 0),
-        costPrice: Number(row.costPrice || 0),
-        sellPrice: Number(row.sellPrice || 0),
-        duplicateAction: row.duplicateAction,
-      }));
+      .map((row) => {
+        const category =
+          row.category === "Boshqa"
+            ? (row.customCategory || "").trim()
+            : row.category;
+
+        return {
+          name: row.name.trim(),
+          sku: row.sku || generateSku(),
+          category: category || "Boshqa",
+          quantity: Number(row.quantity || 0),
+          costPrice: Number(row.costPrice || 0),
+          sellPrice: Number(row.sellPrice || 0),
+          duplicateAction: row.duplicateAction,
+        };
+      });
 
     if (!quickForm.supplier.trim() || payloadRows.length === 0) {
       setInventoryError("Ta'minotchi va kamida bitta mahsulot kiritilishi kerak");
@@ -314,15 +317,12 @@ function Inventory() {
         addActivityLog({
           type: "inventory",
           title: "Tezkor kirim qilindi",
-          description: `${quickForm.entryNo}: ${products.length} turdagi mahsulot kirim qilindi`,
+          description: `${products.length} turdagi mahsulot kirim qilindi`,
           userName: currentUser?.name,
           userRole: currentUser?.role,
         });
 
-        const entryNumber = Number(quickForm.entryNo.replace(/\D/g, ""));
-        if (entryNumber > 0) {
-          localStorage.setItem("techpro_last_entry_no", String(entryNumber));
-        }
+        payloadRows.forEach((row) => saveNewCategory(row.category));
 
         setShowQuickModal(false);
         resetQuickEntry();
@@ -704,6 +704,13 @@ function Inventory() {
               <strong>{item.supplier}</strong>
             </div>
 
+            {item.date && (
+              <div className="inventory-entry-date">
+                <span>Kirim sanasi</span>
+                <strong>{item.date}</strong>
+              </div>
+            )}
+
             <div className="inventory-card-footer">
               <div className="inventory-payment">
                 <span
@@ -762,7 +769,6 @@ function Inventory() {
             </datalist>
 
             <div className="quick-entry-head">
-              <input type="text" value={quickForm.entryNo} readOnly />
               <input
                 list="quick-supplier-options"
                 type="text"
@@ -868,13 +874,71 @@ function Inventory() {
                           />
                         </td>
                         <td>
-                          <input
-                            type="text"
-                            value={row.category}
-                            onChange={(e) =>
-                              updateQuickRow(row.id, "category", e.target.value)
-                            }
-                          />
+                          <div className="custom-select quick-category-select">
+                            <button
+                              className="custom-select-trigger"
+                              onClick={() =>
+                                setQuickCategoryOpen(
+                                  quickCategoryOpen === row.id ? null : row.id,
+                                )
+                              }
+                              type="button"
+                            >
+                              <span>Kategoriya</span>
+                              <strong>{row.category || "Tanlang"}</strong>
+                              <FiChevronDown />
+                            </button>
+
+                            {quickCategoryOpen === row.id && (
+                              <div className="custom-select-menu">
+                                {[...categoryOptions, "Boshqa"].map(
+                                  (category) => (
+                                    <button
+                                      className={
+                                        row.category === category ? "active" : ""
+                                      }
+                                      key={category}
+                                      onClick={() => {
+                                        updateQuickRow(
+                                          row.id,
+                                          "category",
+                                          category,
+                                        );
+                                        if (category !== "Boshqa") {
+                                          updateQuickRow(
+                                            row.id,
+                                            "customCategory",
+                                            "",
+                                          );
+                                        }
+                                        setQuickCategoryOpen(null);
+                                      }}
+                                      type="button"
+                                    >
+                                      <span>{category}</span>
+                                      {row.category === category && <FiCheck />}
+                                    </button>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {row.category === "Boshqa" && (
+                            <input
+                              className="quick-custom-category"
+                              type="text"
+                              placeholder="Kategoriya nomi"
+                              value={row.customCategory || ""}
+                              onChange={(e) =>
+                                updateQuickRow(
+                                  row.id,
+                                  "customCategory",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          )}
                         </td>
                         <td>
                           <input
