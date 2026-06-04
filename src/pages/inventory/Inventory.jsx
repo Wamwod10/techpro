@@ -152,6 +152,11 @@ function Inventory() {
     { value: "debt", label: "Qarzga olingan" },
   ];
 
+  const quickPaymentOptions = [
+    { value: "paid", label: "To'langan" },
+    { value: "debt", label: "Qarz" },
+  ];
+
   const selectedCategoryLabel = formData.category || "Kategoriya tanlang";
 
   const selectedPaymentLabel =
@@ -159,6 +164,10 @@ function Inventory() {
       ? "Qarzga olingan"
       : paymentOptions.find((option) => option.value === formData.paymentStatus)
           ?.label || "To'lov holati";
+
+  const selectedQuickPaymentLabel =
+    quickPaymentOptions.find((option) => option.value === quickForm.paymentStatus)
+      ?.label || "To'lov holati";
 
   const supplierOptions = [
     ...new Set(
@@ -785,18 +794,47 @@ function Inventory() {
                   setQuickForm({ ...quickForm, date: e.target.value })
                 }
               />
-              <select
-                value={quickForm.paymentStatus}
-                onChange={(e) =>
-                  setQuickForm({
-                    ...quickForm,
-                    paymentStatus: e.target.value,
-                  })
-                }
-              >
-                <option value="paid">To'langan</option>
-                <option value="debt">Qarz</option>
-              </select>
+              <div className="custom-select quick-payment-select">
+                <button
+                  className="custom-select-trigger"
+                  onClick={() =>
+                    setOpenSelect(
+                      openSelect === "quick-payment" ? null : "quick-payment",
+                    )
+                  }
+                  type="button"
+                >
+                  <span>To'lov holati</span>
+                  <strong>{selectedQuickPaymentLabel}</strong>
+                  <FiChevronDown />
+                </button>
+
+                {openSelect === "quick-payment" && (
+                  <div className="custom-select-menu">
+                    {quickPaymentOptions.map((option) => (
+                      <button
+                        className={
+                          quickForm.paymentStatus === option.value
+                            ? "active"
+                            : ""
+                        }
+                        key={option.value}
+                        onClick={() => {
+                          setQuickForm({
+                            ...quickForm,
+                            paymentStatus: option.value,
+                          });
+                          setOpenSelect(null);
+                        }}
+                        type="button"
+                      >
+                        <span>{option.label}</span>
+                        {quickForm.paymentStatus === option.value && <FiCheck />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="quick-table-wrap">

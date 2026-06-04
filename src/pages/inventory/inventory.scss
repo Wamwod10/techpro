@@ -336,6 +336,16 @@
   font-weight: 700;
 }
 
+.quick-entry-head .custom-select-trigger {
+  height: 44px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.quick-payment-select .custom-select-menu {
+  z-index: 90;
+}
+
 .quick-entry-head select {
   appearance: none;
   cursor: pointer;
@@ -367,6 +377,12 @@
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
   vertical-align: top;
+  position: relative;
+  overflow: visible;
+}
+
+.quick-entry-table tr {
+  position: relative;
 }
 
 .quick-entry-table th {
@@ -395,11 +411,14 @@
 }
 
 .quick-entry-table .custom-select-menu {
-  position: static;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
   max-height: 220px;
   overflow-y: auto;
-  margin-top: 8px;
-  z-index: 40;
+  margin-top: 0;
+  z-index: 80;
 }
 
 .quick-custom-category {
@@ -407,7 +426,11 @@
 }
 
 .duplicate-warning {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% - 6px);
+  left: 12px;
+  right: 12px;
+  margin-top: 0;
   padding: 10px;
   border: 1px solid #fed7aa;
   border-radius: 12px;
@@ -417,6 +440,8 @@
   gap: 7px;
   font-size: 12px;
   font-weight: 800;
+  z-index: 70;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
 }
 
 .duplicate-warning svg {
