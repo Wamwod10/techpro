@@ -556,7 +556,8 @@
   gap: 14px;
 
   max-height: 300px;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .daily-sale-card {
