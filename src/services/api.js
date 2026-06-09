@@ -12,6 +12,8 @@ const api = axios.create({
   timeout: API_TIMEOUT,
 });
 
+export const SELECTED_STORE_STORAGE_KEY = "techpro_selected_store";
+
 api.interceptors.request.use((config) => {
   const savedUser = localStorage.getItem("techpro_user");
 
@@ -23,6 +25,15 @@ api.interceptors.request.use((config) => {
       if (user?.role) config.headers["x-techpro-user-role"] = user.role;
       if (user?.username) {
         config.headers["x-techpro-username"] = user.username;
+      }
+
+      const storeId =
+        user?.role === "admin"
+          ? localStorage.getItem(SELECTED_STORE_STORAGE_KEY)
+          : user?.storeId;
+
+      if (storeId) {
+        config.headers["x-techpro-store-id"] = storeId;
       }
     } catch {
       localStorage.removeItem("techpro_user");

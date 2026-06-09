@@ -4,18 +4,21 @@ export const LOCAL_USERS = [
     password: "1234",
     role: "admin",
     name: "Administrator",
+    storeId: null,
   },
   {
     username: "sotuvchi1",
     password: "1111",
     role: "cashier",
     name: "Sotuvchi 1",
+    storeId: "dokon-1",
   },
   {
     username: "sotuvchi2",
     password: "2222",
     role: "cashier",
     name: "Sotuvchi 2",
+    storeId: "dokon-2",
   },
 ];
 
@@ -24,4 +27,5 @@ export const toSessionUser = (user) => ({
   username: user.username,
   role: user.role,
   name: user.name,
+  storeId: user.storeId,
 });

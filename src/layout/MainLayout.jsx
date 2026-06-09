@@ -23,17 +23,29 @@ import {
   FiMenu,
   FiX,
   FiBriefcase,
+  FiMapPin,
+  FiChevronDown,
+  FiCheck,
 } from "react-icons/fi";
 
 import "./mainlayout.scss";
 import { isLowStock } from "../utils/stock";
 
 function MainLayout() {
-  const { inventory, loading, error } = useStore();
+  const {
+    inventory,
+    loading,
+    error,
+    stores,
+    currentStore,
+    currentStoreId,
+    setSelectedStoreId,
+  } = useStore();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [headerSearch, setHeaderSearch] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showStoreMenu, setShowStoreMenu] = useState(false);
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem("techpro_theme") || "light";
   });
@@ -129,6 +141,7 @@ function MainLayout() {
   }, ${today.getFullYear()}`;
 
   const { currentUser, logout } = useAuth();
+  const activeStoreName = currentStore?.name || currentStoreId;
 
   const menuItems = [
     {
@@ -306,6 +319,58 @@ function MainLayout() {
           </div>
 
           <div className="header-right">
+            {currentUser?.role === "admin" && (
+              <div
+                className={`store-selector ${showStoreMenu ? "is-open" : ""}`}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) {
+                    setShowStoreMenu(false);
+                  }
+                }}
+              >
+                <button
+                  className="store-selector-trigger"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={showStoreMenu}
+                  onClick={() => setShowStoreMenu((value) => !value)}
+                >
+                  <span className="store-selector-label">
+                    <FiMapPin />
+                    Do'kon tanlash
+                  </span>
+
+                  <strong>{activeStoreName}</strong>
+                  <FiChevronDown className="store-selector-chevron" />
+                </button>
+
+                {showStoreMenu && (
+                  <div className="store-selector-menu" role="listbox">
+                    {stores.map((store) => {
+                      const isActive = store.id === currentStoreId;
+
+                      return (
+                        <button
+                          key={store.id}
+                          className={isActive ? "active" : ""}
+                          type="button"
+                          role="option"
+                          aria-selected={isActive}
+                          onClick={() => {
+                            setSelectedStoreId(store.id);
+                            setShowStoreMenu(false);
+                          }}
+                        >
+                          <span>{store.name}</span>
+                          {isActive && <FiCheck />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               className="theme-toggle"
               onClick={() => setTheme(isDarkMode ? "light" : "dark")}
@@ -361,7 +426,11 @@ function MainLayout() {
 
               <div className="profile-info">
                 <h4>{currentUser?.name}</h4>
-                <p>{currentUser?.role === "admin" ? "Admin" : "Sotuvchi"}</p>
+                <p>
+                  {currentUser?.role === "admin"
+                    ? `Admin - ${activeStoreName}`
+                    : "Sotuvchi"}
+                </p>
               </div>
             </div>
 

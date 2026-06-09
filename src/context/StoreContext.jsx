@@ -6,11 +6,16 @@ import {
   useMemo,
   useState,
 } from "react";
-import api from "../services/api";
+import api, { SELECTED_STORE_STORAGE_KEY } from "../services/api";
 import { useAuth } from "./AuthContext";
 import { normalizeSaleReturns } from "../utils/returns";
 
 const StoreContext = createContext();
+const DEFAULT_STORE_ID = "dokon-1";
+const DEFAULT_STORES = [
+  { id: "dokon-1", name: "dokon-1" },
+  { id: "dokon-2", name: "dokon-2" },
+];
 
 const normalizeHistory = (history = []) =>
   history.map((day) => ({
@@ -43,6 +48,10 @@ const getStoreErrorMessage = (err) => {
 
 export const StoreProvider = ({ children }) => {
   const { currentUser } = useAuth();
+  const [stores, setStores] = useState(DEFAULT_STORES);
+  const [selectedStoreId, setSelectedStoreIdState] = useState(() => {
+    return localStorage.getItem(SELECTED_STORE_STORAGE_KEY) || DEFAULT_STORE_ID;
+  });
   const [inventory, setInventoryState] = useState([]);
   const [dailySales, setDailySalesState] = useState([]);
   const [salesHistory, setSalesHistoryState] = useState([]);
@@ -56,9 +65,46 @@ export const StoreProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadStore = useCallback(async () => {
-    if (!currentUser) return;
+  const isAdmin = currentUser?.role === "admin";
+  const currentStoreId = isAdmin
+    ? selectedStoreId || DEFAULT_STORE_ID
+    : currentUser?.storeId || DEFAULT_STORE_ID;
+  const currentStore = useMemo(
+    () =>
+      stores.find((store) => store.id === currentStoreId) || {
+        id: currentStoreId,
+        name: currentStoreId,
+      },
+    [currentStoreId, stores],
+  );
 
+  const clearStoreData = useCallback(() => {
+    setInventoryState([]);
+    setDailySalesState([]);
+    setSalesHistoryState([]);
+    setSuppliersState([]);
+    setExpensesState([]);
+    setReturnsState([]);
+    setActiveShift(null);
+    setShiftHistory([]);
+    setActivityLogsState([]);
+    setTelegramSettingsState(null);
+  }, []);
+
+  const setSelectedStoreId = useCallback(
+    (storeId) => {
+      if (!isAdmin || !storeId) return;
+
+      localStorage.setItem(SELECTED_STORE_STORAGE_KEY, storeId);
+      setSelectedStoreIdState(storeId);
+    },
+    [isAdmin],
+  );
+
+  const loadStore = useCallback(async () => {
+    if (!currentUser || !currentStoreId) return;
+
+    clearStoreData();
     setLoading(true);
     setError("");
 
@@ -67,6 +113,7 @@ export const StoreProvider = ({ children }) => {
         params: { includeHistory: false },
       });
 
+      setStores(data.stores?.length ? data.stores : DEFAULT_STORES);
       setInventoryState(normalizeInventory(data.inventory || []));
       setDailySalesState((data.dailySales || []).map(normalizeSaleReturns));
       setSalesHistoryState(normalizeHistory(data.salesHistory || []));
@@ -91,27 +138,22 @@ export const StoreProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [clearStoreData, currentStoreId, currentUser]);
 
   useEffect(() => {
     if (!currentUser) {
-      setInventoryState([]);
-      setDailySalesState([]);
-      setSalesHistoryState([]);
-      setSuppliersState([]);
-      setExpensesState([]);
-      setReturnsState([]);
-      setActiveShift(null);
-      setShiftHistory([]);
-      setActivityLogsState([]);
-      setTelegramSettingsState(null);
+      clearStoreData();
       setLoading(false);
       setError("");
       return;
     }
 
+    if (currentUser.role !== "admin") {
+      localStorage.removeItem(SELECTED_STORE_STORAGE_KEY);
+    }
+
     loadStore();
-  }, [currentUser, loadStore]);
+  }, [clearStoreData, currentUser, loadStore]);
 
   const setInventory = (updater) => {
     setInventoryState((previous) => {
@@ -204,6 +246,11 @@ export const StoreProvider = ({ children }) => {
       activityLogs,
       setActivityLogs,
       addActivityLog,
+      stores,
+      currentStore,
+      currentStoreId,
+      selectedStoreId,
+      setSelectedStoreId,
       loading,
       error,
       reloadStore: loadStore,
@@ -219,6 +266,11 @@ export const StoreProvider = ({ children }) => {
       shiftHistory,
       telegramSettings,
       activityLogs,
+      stores,
+      currentStore,
+      currentStoreId,
+      selectedStoreId,
+      setSelectedStoreId,
       loading,
       error,
       loadStore,

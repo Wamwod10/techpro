@@ -3,7 +3,11 @@ import { LOCAL_USERS, toSessionUser } from "../config/localUsers";
 
 const AuthContext = createContext();
 const USER_STORAGE_KEY = "techpro_user";
-const allowedLocalStorageKeys = new Set([USER_STORAGE_KEY, "techpro_theme"]);
+const allowedLocalStorageKeys = new Set([
+  USER_STORAGE_KEY,
+  "techpro_theme",
+  "techpro_selected_store",
+]);
 
 const cleanupLegacyLocalStorage = () => {
   Object.keys(localStorage).forEach((key) => {
