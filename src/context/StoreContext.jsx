@@ -4,9 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import api, { SELECTED_STORE_STORAGE_KEY } from "../services/api";
+import api, {
+  BOOTSTRAP_TIMEOUT,
+  SELECTED_STORE_STORAGE_KEY,
+  SERVER_WARMING_MESSAGE,
+} from "../services/api";
 import { useAuth } from "./AuthContext";
 import { normalizeSaleReturns } from "../utils/returns";
 
@@ -33,8 +38,30 @@ const normalizeInventory = (items = []) =>
       sellPrice: Number(item.sellPrice ?? item.price ?? 0),
     }));
 
+const requestStoreConfig = (storeId, signal, config = {}) => ({
+  ...config,
+  signal,
+  timeout: config.timeout || BOOTSTRAP_TIMEOUT,
+  params: {
+    ...(config.params || {}),
+    storeId,
+  },
+});
+
 const getStoreErrorMessage = (err) => {
+  if (err.code === "ERR_CANCELED") {
+    return "";
+  }
+
+  if (err.code === "ECONNABORTED") {
+    return "Server javobi kechikyapti. Qayta urinib ko'ring yoki biroz kuting.";
+  }
+
   const message = err.response?.data?.message || err.message || "";
+
+  if (!err.response && message === "Network Error") {
+    return "Serverga ulanish sekin. Render backend uyg'onayotgan bo'lishi mumkin.";
+  }
 
   if (
     message.toLowerCase().includes("column") ||
@@ -63,7 +90,9 @@ export const StoreProvider = ({ children }) => {
   const [activityLogs, setActivityLogsState] = useState([]);
   const [telegramSettings, setTelegramSettingsState] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const [error, setError] = useState("");
+  const activeLoadRef = useRef({ id: 0, controller: null });
 
   const isAdmin = currentUser?.role === "admin";
   const currentStoreId = isAdmin
@@ -104,47 +133,145 @@ export const StoreProvider = ({ children }) => {
   const loadStore = useCallback(async () => {
     if (!currentUser || !currentStoreId) return;
 
+    activeLoadRef.current.controller?.abort();
+    const controller = new AbortController();
+    const requestId = activeLoadRef.current.id + 1;
+    activeLoadRef.current = { id: requestId, controller };
+
     clearStoreData();
     setLoading(true);
+    setLoadingMessage("Yuklanmoqda...");
     setError("");
+
+    const coldStartTimer = window.setTimeout(() => {
+      if (activeLoadRef.current.id === requestId && !controller.signal.aborted) {
+        setLoadingMessage(SERVER_WARMING_MESSAGE);
+      }
+    }, 1500);
+
+    const isCurrentRequest = () =>
+      activeLoadRef.current.id === requestId && !controller.signal.aborted;
 
     try {
       const { data } = await api.get("/bootstrap", {
-        params: { includeHistory: false },
+        ...requestStoreConfig(currentStoreId, controller.signal, {
+          params: {
+            includeHistory: false,
+            includeBackground: false,
+          },
+        }),
       });
+
+      if (!isCurrentRequest()) return;
 
       setStores(data.stores?.length ? data.stores : DEFAULT_STORES);
       setInventoryState(normalizeInventory(data.inventory || []));
       setDailySalesState((data.dailySales || []).map(normalizeSaleReturns));
-      setSalesHistoryState(normalizeHistory(data.salesHistory || []));
-      setSuppliersState(data.suppliers || []);
-      setExpensesState(data.expenses || []);
-      setReturnsState(data.returns || []);
       setActiveShift(data.activeShift || null);
-      setShiftHistory(data.shiftHistory || []);
-      setActivityLogsState(data.activityLogs || []);
-      setTelegramSettingsState(data.telegramSettings || null);
 
-      void api
-        .get("/sales/history")
-        .then(({ data: history }) => {
-          setSalesHistoryState(normalizeHistory(history || []));
-        })
-        .catch(() => {
-          // Core store data is already usable; history can be retried manually.
-        });
-    } catch (err) {
-      setError(getStoreErrorMessage(err));
-    } finally {
       setLoading(false);
+      setLoadingMessage("");
+
+      const backgroundRequests = [
+        api
+          .get("/returns", requestStoreConfig(currentStoreId, controller.signal))
+          .then(({ data: returnsData }) => {
+            if (isCurrentRequest()) setReturnsState(returnsData || []);
+          }),
+        api
+          .get("/shifts", requestStoreConfig(currentStoreId, controller.signal))
+          .then(({ data: shiftsData }) => {
+            if (!isCurrentRequest()) return;
+
+            setShiftHistory(
+              (shiftsData || []).filter((shift) => shift.status === "closed"),
+            );
+          }),
+        api
+          .get(
+            "/sales/history",
+            requestStoreConfig(currentStoreId, controller.signal),
+          )
+          .then(({ data: history }) => {
+            if (isCurrentRequest()) {
+              setSalesHistoryState(normalizeHistory(history || []));
+            }
+          }),
+      ];
+
+      if (isAdmin) {
+        backgroundRequests.push(
+          api
+            .get(
+              "/suppliers",
+              requestStoreConfig(currentStoreId, controller.signal),
+            )
+            .then(({ data: suppliersData }) => {
+              if (isCurrentRequest()) setSuppliersState(suppliersData || []);
+            }),
+          api
+            .get(
+              "/expenses",
+              requestStoreConfig(currentStoreId, controller.signal),
+            )
+            .then(({ data: expensesData }) => {
+              if (isCurrentRequest()) setExpensesState(expensesData || []);
+            }),
+          api
+            .get(
+              "/activity-logs",
+              requestStoreConfig(currentStoreId, controller.signal),
+            )
+            .then(({ data: logsData }) => {
+              if (isCurrentRequest()) setActivityLogsState(logsData || []);
+            }),
+          api
+            .get(
+              "/telegram/settings",
+              requestStoreConfig(currentStoreId, controller.signal),
+            )
+            .then(({ data: settings }) => {
+              if (isCurrentRequest()) setTelegramSettingsState(settings || null);
+            }),
+        );
+      }
+
+      void Promise.allSettled(backgroundRequests).then((results) => {
+        if (!isCurrentRequest()) return;
+
+        const failed = results.some(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.code !== "ERR_CANCELED",
+        );
+
+        if (failed) {
+          setError(
+            "Asosiy ma'lumotlar yuklandi. Qo'shimcha tarix yoki loglar sekin kelyapti.",
+          );
+        }
+      });
+    } catch (err) {
+      if (isCurrentRequest()) {
+        setError(getStoreErrorMessage(err));
+      }
+    } finally {
+      window.clearTimeout(coldStartTimer);
+
+      if (isCurrentRequest()) {
+        setLoading(false);
+        setLoadingMessage("");
+      }
     }
-  }, [clearStoreData, currentStoreId, currentUser]);
+  }, [clearStoreData, currentStoreId, currentUser, isAdmin]);
 
   useEffect(() => {
     if (!currentUser) {
       clearStoreData();
       setLoading(false);
+      setLoadingMessage("");
       setError("");
+      activeLoadRef.current.controller?.abort();
       return;
     }
 
@@ -153,6 +280,10 @@ export const StoreProvider = ({ children }) => {
     }
 
     loadStore();
+
+    return () => {
+      activeLoadRef.current.controller?.abort();
+    };
   }, [clearStoreData, currentUser, loadStore]);
 
   const setInventory = (updater) => {
@@ -252,6 +383,7 @@ export const StoreProvider = ({ children }) => {
       selectedStoreId,
       setSelectedStoreId,
       loading,
+      loadingMessage,
       error,
       reloadStore: loadStore,
     }),
@@ -272,6 +404,7 @@ export const StoreProvider = ({ children }) => {
       selectedStoreId,
       setSelectedStoreId,
       loading,
+      loadingMessage,
       error,
       loadStore,
     ],

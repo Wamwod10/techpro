@@ -40,6 +40,7 @@ function MainLayout() {
     currentStore,
     currentStoreId,
     setSelectedStoreId,
+    loadingMessage,
   } = useStore();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -441,7 +442,11 @@ function MainLayout() {
         </header>
 
         <div className="content">
-          {loading && <div className="page-state-banner">Yuklanmoqda...</div>}
+          {loading && (
+            <div className="page-state-banner">
+              {loadingMessage || "Yuklanmoqda..."}
+            </div>
+          )}
           {error && <div className="page-state-banner error">{error}</div>}
           <Outlet />
         </div>

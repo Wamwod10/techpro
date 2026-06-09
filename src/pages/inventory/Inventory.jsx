@@ -99,7 +99,6 @@ function Inventory() {
     setSuppliers,
 
     addActivityLog,
-    reloadStore,
   } = useStore();
 
   const handleEdit = (item) => {
@@ -335,7 +334,6 @@ function Inventory() {
 
         setShowQuickModal(false);
         resetQuickEntry();
-        void reloadStore?.();
       })
       .catch((error) => {
         setInventoryError(
