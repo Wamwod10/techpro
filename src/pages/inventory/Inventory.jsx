@@ -90,6 +90,7 @@ function Inventory() {
     paymentStatus: "paid",
   });
   const [quickRows, setQuickRows] = useState(createDefaultQuickRows);
+  const [savedDuplicateChoices, setSavedDuplicateChoices] = useState({});
 
   const {
     inventory,
@@ -225,6 +226,7 @@ function Inventory() {
     });
     setQuickRows(createDefaultQuickRows());
     setQuickCategoryOpen(null);
+    setSavedDuplicateChoices({});
     setInventoryError("");
   };
 
@@ -232,6 +234,24 @@ function Inventory() {
     setQuickRows((rows) =>
       rows.map((row) => (row.id === id ? { ...row, [key]: value } : row)),
     );
+
+    if (key === "name" || key === "duplicateAction") {
+      setSavedDuplicateChoices((choices) => {
+        const nextChoices = { ...choices };
+        delete nextChoices[id];
+        return nextChoices;
+      });
+    }
+  };
+
+  const saveQuickDuplicateChoice = (row) => {
+    setSavedDuplicateChoices((choices) => ({
+      ...choices,
+      [row.id]: {
+        name: row.name,
+        duplicateAction: row.duplicateAction,
+      },
+    }));
   };
 
   const getExistingProductByName = (name) =>
@@ -851,6 +871,14 @@ function Inventory() {
                 <tbody>
                   {quickRows.map((row) => {
                     const existingProduct = getExistingProductByName(row.name);
+                    const savedDuplicateChoice = savedDuplicateChoices[row.id];
+                    const showDuplicateWarning =
+                      existingProduct &&
+                      !(
+                        savedDuplicateChoice?.name === row.name &&
+                        savedDuplicateChoice?.duplicateAction ===
+                          row.duplicateAction
+                      );
 
                     return (
                       <tr key={row.id}>
@@ -863,7 +891,7 @@ function Inventory() {
                             }
                           />
 
-                          {existingProduct && (
+                          {showDuplicateWarning && (
                             <div className="duplicate-warning">
                               <FiAlertTriangle />
                               <span>Mavjud: {existingProduct.sku}</span>
@@ -897,6 +925,14 @@ function Inventory() {
                                 />
                                 Yangi SKU
                               </label>
+                              <button
+                                className="duplicate-save-btn"
+                                onClick={() => saveQuickDuplicateChoice(row)}
+                                type="button"
+                              >
+                                <FiCheck />
+                                Saqlash
+                              </button>
                             </div>
                           )}
                         </td>
