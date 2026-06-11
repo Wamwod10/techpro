@@ -232,7 +232,24 @@ function Inventory() {
 
   const updateQuickRow = (id, key, value) => {
     setQuickRows((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, [key]: value } : row)),
+      rows.map((row) => {
+        if (row.id !== id) {
+          return row;
+        }
+
+        const nextRow = { ...row, [key]: value };
+        const existingProduct = getExistingProductByName(nextRow.name);
+
+        if (key === "duplicateAction" && existingProduct) {
+          if (value === "merge") {
+            nextRow.sku = existingProduct.sku || nextRow.sku;
+          } else if (nextRow.sku === existingProduct.sku) {
+            nextRow.sku = generateSku();
+          }
+        }
+
+        return nextRow;
+      }),
     );
 
     if (key === "name" || key === "duplicateAction") {
@@ -245,6 +262,34 @@ function Inventory() {
   };
 
   const saveQuickDuplicateChoice = (row) => {
+    const existingProduct = getExistingProductByName(row.name);
+
+    if (existingProduct) {
+      setQuickRows((rows) =>
+        rows.map((currentRow) => {
+          if (currentRow.id !== row.id) {
+            return currentRow;
+          }
+
+          if (row.duplicateAction === "merge") {
+            return {
+              ...currentRow,
+              sku: existingProduct.sku || currentRow.sku,
+            };
+          }
+
+          if (currentRow.sku === existingProduct.sku) {
+            return {
+              ...currentRow,
+              sku: generateSku(),
+            };
+          }
+
+          return currentRow;
+        }),
+      );
+    }
+
     setSavedDuplicateChoices((choices) => ({
       ...choices,
       [row.id]: {
@@ -294,6 +339,9 @@ function Inventory() {
     const payloadRows = quickRows
       .filter((row) => row.name.trim())
       .map((row) => {
+        const existingProduct = getExistingProductByName(row.name);
+        const shouldMergeExisting =
+          existingProduct && row.duplicateAction !== "new";
         const category =
           row.category === "Boshqa"
             ? (row.customCategory || "").trim()
@@ -301,7 +349,9 @@ function Inventory() {
 
         return {
           name: row.name.trim(),
-          sku: row.sku || generateSku(),
+          sku: shouldMergeExisting
+            ? existingProduct.sku
+            : row.sku || generateSku(),
           category: category || "Boshqa",
           quantity: Number(row.quantity || 0),
           costPrice: Number(row.costPrice || 0),
