@@ -26,6 +26,7 @@ import {
   FiMapPin,
   FiChevronDown,
   FiCheck,
+  FiLogOut,
 } from "react-icons/fi";
 
 import "./mainlayout.scss";
@@ -143,6 +144,7 @@ function MainLayout() {
 
   const { currentUser, logout } = useAuth();
   const activeStoreName = currentStore?.name || currentStoreId;
+  const hasStoreSelector = currentUser?.role === "admin";
 
   const menuItems = [
     {
@@ -271,8 +273,10 @@ function MainLayout() {
         onClick={() => setIsSidebarOpen(false)}
       />
 
-      <div className="main">
-        <header className="header">
+      <div className={`main ${hasStoreSelector ? "has-store-selector" : ""}`}>
+        <header
+          className={`header ${hasStoreSelector ? "has-store-selector" : ""}`}
+        >
           <button
             className="menu-toggle"
             type="button"
@@ -320,7 +324,7 @@ function MainLayout() {
           </div>
 
           <div className="header-right">
-            {currentUser?.role === "admin" && (
+            {hasStoreSelector && (
               <div
                 className={`store-selector ${showStoreMenu ? "is-open" : ""}`}
                 onBlur={(event) => {
@@ -435,8 +439,9 @@ function MainLayout() {
               </div>
             </div>
 
-            <button className="logout-btn" onClick={logout}>
-              Chiqish
+            <button className="logout-btn" onClick={logout} aria-label="Chiqish">
+              <FiLogOut />
+              <span>Chiqish</span>
             </button>
           </div>
         </header>
